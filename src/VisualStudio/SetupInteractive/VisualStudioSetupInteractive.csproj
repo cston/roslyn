@@ -24,7 +24,7 @@
     <StartArguments>/rootsuffix RoslynDev /log</StartArguments>
     <PlatformTarget>x86</PlatformTarget>
     <MinimumVisualStudioVersion>$(VisualStudioVersion)</MinimumVisualStudioVersion>
-    <TargetVsixContainerName>Roslyn.VisualStudio.Setup.Interactive.vsix</TargetVsixContainerName>
+    <TargetVsixContainerName>Roslyn.VisualStudio.Interactive.Setup.vsix</TargetVsixContainerName>
     <ImportVSSDKTargets>true</ImportVSSDKTargets>
     <SolutionDir Condition="'$(SolutionDir)' == '' OR '$(SolutionDir)' == '*Undefined*'">..\..\..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
@@ -64,7 +64,7 @@
     </ProjectReference>
     <ProjectReference Include="..\Setup\VisualStudioSetup.csproj">
       <Project>{201ec5b7-f91e-45e5-b9f2-67a266cce6fc}</Project>
-      <Name>VisualStudioComponents</Name>
+      <Name>VisualStudioSetup</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>False</Private>
       <IncludeOutputGroupsInVSIX>
