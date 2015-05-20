@@ -28,6 +28,15 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
         internal abstract IEnumerable<Tuple<Diagnostic, CodeFixCollection>> GetDiagnosticAndFixes(TestWorkspace workspace, string fixAllActionEquivalenceKey);
         internal abstract IEnumerable<Diagnostic> GetDiagnostics(TestWorkspace workspace);
 
+        private static bool IsUnsupportedScriptingScenario(ParseOptions parseOptions)
+        {
+#if SCRIPTING
+            return false;
+#else
+            return (parseOptions != null) && (parseOptions.Kind != SourceCodeKind.Regular);
+#endif
+        }
+
         protected virtual void TestMissing(string initial, IDictionary<OptionKey, object> options = null, string fixAllActionEquivalenceKey = null)
         {
             TestMissing(initial, null, options, fixAllActionEquivalenceKey);
@@ -41,6 +50,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
 
         protected void TestMissing(string initialMarkup, ParseOptions parseOptions, CompilationOptions compilationOptions, IDictionary<OptionKey, object> options = null, string fixAllActionEquivalenceKey = null)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             using (var workspace = CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions))
             {
                 if (options != null)
@@ -93,6 +107,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
             bool isAddedDocument = false,
             string fixAllActionEquivalenceKey = null)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             string expected;
             IDictionary<string, IList<TextSpan>> spanMap;
             MarkupTestFile.GetSpans(expectedMarkup.NormalizeLineEndings(), out expected, out spanMap);
@@ -218,6 +237,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
             ParseOptions parseOptions = null,
             CompilationOptions compilationOptions = null)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             using (var workspace = CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions))
             {
                 var diagnosticAndFix = GetDiagnosticAndFix(workspace);
@@ -235,6 +259,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
             ParseOptions parseOptions = null,
             CompilationOptions compilationOptions = null)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             using (var workspace = CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions))
             {
                 var diagnosticAndFix = GetDiagnosticAndFix(workspace);
@@ -249,6 +278,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
             ParseOptions parseOptions = null,
             CompilationOptions compilationOptions = null)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             using (var workspace = CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions))
             {
                 var diagnosticAndFix = GetDiagnosticAndFixes(workspace, null);
@@ -471,6 +505,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Diagnostics
             bool compareTokens,
             bool isLine)
         {
+            if (IsUnsupportedScriptingScenario(parseOptions))
+            {
+                return;
+            }
+
             using (var workspace = isLine ? CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions) : TestWorkspaceFactory.CreateWorkspace(initialMarkup))
             {
                 var diagnosticAndFix = GetDiagnosticAndFix(workspace);

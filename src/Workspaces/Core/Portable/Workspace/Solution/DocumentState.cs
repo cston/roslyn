@@ -242,14 +242,15 @@ namespace Microsoft.CodeAnalysis
 
         public DocumentState UpdateSourceCodeKind(SourceCodeKind kind)
         {
-#if SCRIPTING
             if (this.ParseOptions == null || kind == this.SourceCodeKind)
             {
                 return this;
             }
 
+#if SCRIPTING
             return this.SetParseOptions(this.ParseOptions.WithKind(kind));
 #else
+            System.Diagnostics.Debug.Assert(false);
             return this;
 #endif
         }

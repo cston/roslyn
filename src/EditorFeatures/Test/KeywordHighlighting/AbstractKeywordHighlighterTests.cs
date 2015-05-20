@@ -31,6 +31,12 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.KeywordHighlighting
             ParseOptions options,
             bool optionIsEnabled = true)
         {
+#if !SCRIPTING
+            if ((options != null) && (options.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
             using (var workspace = CreateWorkspaceFromFile(markup, options))
             {
                 var testDocument = workspace.Documents.Single();

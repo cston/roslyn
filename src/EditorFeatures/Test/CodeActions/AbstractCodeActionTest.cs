@@ -49,6 +49,12 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.CodeActions
             CompilationOptions compilationOptions,
             Func<dynamic, dynamic> nodeLocator = null)
         {
+#if !SCRIPTING
+            if ((parseOptions != null) && (parseOptions.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
             using (var workspace = CreateWorkspaceFromFile(initialMarkup, parseOptions, compilationOptions))
             {
                 var codeIssueOrRefactoring = GetCodeRefactoring(workspace, nodeLocator);
@@ -102,6 +108,12 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.CodeActions
             Func<dynamic, dynamic> nodeLocator = null,
             IDictionary<OptionKey, object> options = null)
         {
+#if !SCRIPTING
+            if ((parseOptions != null) && (parseOptions.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
             string expected;
             IDictionary<string, IList<TextSpan>> spanMap;
             MarkupTestFile.GetSpans(expectedMarkup.NormalizeLineEndings(), out expected, out spanMap);

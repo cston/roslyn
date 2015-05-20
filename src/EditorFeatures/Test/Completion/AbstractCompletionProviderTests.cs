@@ -213,6 +213,13 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         /// <param name="checkForAbsence">If true, checks for absence of a specific item (or that no items are returned from this CompletionProvider)</param>
         protected virtual void VerifyWorker(string code, int position, string expectedItemOrNull, string expectedDescriptionOrNull, SourceCodeKind sourceCodeKind, bool usePreviousCharAsTrigger, bool checkForAbsence, bool experimental, int? glyph)
         {
+#if !SCRIPTING
+            if (sourceCodeKind != SourceCodeKind.Regular)
+            {
+                return;
+            }
+#endif
+
             if (experimental)
             {
                 foreach (var project in workspaceFixture.Workspace.Projects)
@@ -251,6 +258,13 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         /// <param name="expectedCodeAfterCommit">The expected code after commit.</param>
         protected virtual void VerifyCustomCommitProviderWorker(string codeBeforeCommit, int position, string itemToCommit, string expectedCodeAfterCommit, SourceCodeKind sourceCodeKind, char? commitChar = null)
         {
+#if !SCRIPTING
+            if (sourceCodeKind != SourceCodeKind.Regular)
+            {
+                return;
+            }
+#endif
+
             var document1 = workspaceFixture.UpdateDocument(codeBeforeCommit, sourceCodeKind);
             VerifyCustomCommitProviderCheckResults(document1, codeBeforeCommit, position, itemToCommit, expectedCodeAfterCommit, commitChar);
 
@@ -317,6 +331,13 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.Completion
         protected virtual void VerifyProviderCommitWorker(string codeBeforeCommit, int position, string itemToCommit, string expectedCodeAfterCommit,
             char? commitChar, string textTypedSoFar, SourceCodeKind sourceCodeKind)
         {
+#if !SCRIPTING
+            if (sourceCodeKind != SourceCodeKind.Regular)
+            {
+                return;
+            }
+#endif
+
             var document1 = workspaceFixture.UpdateDocument(codeBeforeCommit, sourceCodeKind);
             VerifyProviderCommitCheckResults(document1, position, itemToCommit, expectedCodeAfterCommit, commitChar, textTypedSoFar);
 

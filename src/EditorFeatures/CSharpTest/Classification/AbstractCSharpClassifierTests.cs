@@ -32,6 +32,12 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.Classification
            Tuple<string, string>[] expected,
            CSharpParseOptions options = null)
         {
+#if !SCRIPTING
+            if (options == Options.Script)
+            {
+                return;
+            }
+#endif
             var start = allCode.IndexOf(code, StringComparison.Ordinal);
             var length = code.Length;
             var span = new TextSpan(start, length);
