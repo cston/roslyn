@@ -530,6 +530,13 @@ class Program
 
         private void AssertTagsOnBracesOrSemicolonsTokens(string contents, int[] tokenIndices, CSharpParseOptions options = null)
         {
+#if !SCRIPTING
+            if ((options != null) && (options.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
+
             using (var workspace = CSharpWorkspaceFactory.CreateWorkspaceFromFile(contents, options))
             {
                 var document = workspace.CurrentSolution.GetDocument(workspace.Documents.First().Id);

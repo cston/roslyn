@@ -68,6 +68,13 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.ExtractMethod
             bool dontPutOutOrRefOnStruct = true,
             CSharpParseOptions parseOptions = null)
         {
+#if !SCRIPTING
+            if ((parseOptions != null) && (parseOptions.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
+
             using (var workspace = CSharpWorkspaceFactory.CreateWorkspaceFromLines(new[] { codeWithMarker }, parseOptions: parseOptions))
             {
                 var testDocument = workspace.Documents.Single();

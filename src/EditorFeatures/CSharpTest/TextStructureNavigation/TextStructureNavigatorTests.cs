@@ -352,6 +352,13 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.TextStructureNavigation
 
         private static void AssertExtent(string code, int pos, bool isSignificant, int start, int length, CSharpParseOptions options)
         {
+#if !SCRIPTING
+            if ((options != null) && (options.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
+
             using (var workspace = CSharpWorkspaceFactory.CreateWorkspaceFromFile(code, options))
             {
                 var buffer = workspace.Documents.First().GetTextBuffer();
@@ -392,6 +399,13 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.TextStructureNavigation
             int endLength,
             CSharpParseOptions options)
         {
+#if !SCRIPTING
+            if ((options != null) && (options.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
+
             using (var workspace = CSharpWorkspaceFactory.CreateWorkspaceFromFile(code, options))
             {
                 var buffer = workspace.Documents.First().GetTextBuffer();

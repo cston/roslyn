@@ -25,6 +25,13 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.QuickInfo
     {
         private void TestWithOptions(CSharpParseOptions options, string markup, params Action<object>[] expectedResults)
         {
+#if !SCRIPTING
+            if ((options != null) && (options.Kind != SourceCodeKind.Regular))
+            {
+                return;
+            }
+#endif
+
             using (var workspace = CSharpWorkspaceFactory.CreateWorkspaceFromFile(markup, options))
             {
                 var position = workspace.Documents.Single().CursorPosition.Value;

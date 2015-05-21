@@ -61,6 +61,13 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.SignatureHelp
             IEnumerable<SignatureHelpTestItem> expectedOrderedItemsOrNull = null,
             bool usePreviousCharAsTrigger = false)
         {
+#if !SCRIPTING
+            if (sourceCodeKind != SourceCodeKind.Regular)
+            {
+                return;
+            }
+#endif
+
             markupWithPositionAndOptSpan = markupWithPositionAndOptSpan.NormalizeLineEndings();
 
             string code;
@@ -161,6 +168,13 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.SignatureHelp
 
         private void VerifyCurrentParameterNameWorker(string markup, string expectedParameterName, SourceCodeKind sourceCodeKind)
         {
+#if !SCRIPTING
+            if (sourceCodeKind != SourceCodeKind.Regular)
+            {
+                return;
+            }
+#endif
+
             string code;
             int cursorPosition;
             MarkupTestFile.GetPosition(markup.NormalizeLineEndings(), out code, out cursorPosition);
