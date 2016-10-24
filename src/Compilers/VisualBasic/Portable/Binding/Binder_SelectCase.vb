@@ -314,9 +314,15 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
         ) As BoundExpression
 
             Dim caseExpr As BoundExpression = BindValue(expressionSyntax, diagnostics)
-            Dim caseExprType = caseExpr.Type
 
-            If convertCaseElements AndAlso caseExprType.IsIntrinsicOrEnumType() Then
+            If selectExpression Is Nothing Then
+                ' In error scenarios, such as a Case statement outside of a
+                ' Select statement, the Select expression may be Nothing.
+                conditionOpt = Nothing
+                Return caseExpr
+            End If
+
+            If convertCaseElements AndAlso caseExpr.Type.IsIntrinsicOrEnumType() Then
                 ' SPEC:     The expression is converted to the type of the Select expression;
                 ' SPEC:     if the expression is not implicitly convertible to the type of the Select expression, a compile-time error occurs.
 

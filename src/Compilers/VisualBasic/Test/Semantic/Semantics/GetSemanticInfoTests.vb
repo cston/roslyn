@@ -6113,5 +6113,206 @@ BC31138: 'AddHandler', 'RemoveHandler' and 'RaiseEvent' method parameters cannot
             Next
         End Sub
 
+        <WorkItem(233671, "https://devdiv.visualstudio.com/defaultcollection/DevDiv/_workitems#_a=edit&id=233671")>
+        <Fact()>
+        Public Sub QueryClauseInBadStatement_ElseIf()
+            Dim compilation = CreateCompilationWithMscorlib(
+                <compilation>
+                    <file name="a.vb"><![CDATA[
+Class C
+    Shared Sub F(c As Object)
+        ElseIf From o In c Where True Then
+            F(From o in 2 Where False)
+        End If
+    End Sub
+End Class
+    ]]></file>
+                </compilation>)
+            compilation.AssertTheseDiagnostics(
+                <errors>
+BC36005: 'ElseIf' must be preceded by a matching 'If' or 'ElseIf'.
+        ElseIf From o In c Where True Then
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BC36593: Expression of type 'Object' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+        ElseIf From o In c Where True Then
+                         ~
+BC36593: Expression of type 'Integer' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+            F(From o in 2 Where False)
+                        ~
+BC30087: 'End If' must be preceded by a matching 'If'.
+        End If
+        ~~~~~~
+                </errors>)
+            Dim tree = compilation.SyntaxTrees(0)
+            Dim model = compilation.GetSemanticModel(tree)
+            Dim tokens = tree.GetCompilationUnitRoot().DescendantTokens()
+
+            ' ElseIf condition.
+            Dim expr = tokens.Single(Function(t) t.Kind = SyntaxKind.TrueKeyword).Parent
+            Dim info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+
+            ' Block statement expression.
+            expr = tokens.Single(Function(t) t.Kind = SyntaxKind.FalseKeyword).Parent
+            info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+        End Sub
+
+        <WorkItem(233671, "https://devdiv.visualstudio.com/defaultcollection/DevDiv/_workitems#_a=edit&id=233671")>
+        <Fact()>
+        Public Sub QueryClauseInBadStatement_Case()
+            Dim compilation = CreateCompilationWithMscorlib(
+                <compilation>
+                    <file name="a.vb"><![CDATA[
+Class C
+    Shared Sub F(c As Object)
+        Case 1 To From o In c Where True,
+            Is < From o In 2 Where False,
+            From o In 3 Where Nothing
+        Case Else
+        End Select
+    End Sub
+End Class
+    ]]></file>
+                </compilation>)
+            compilation.AssertTheseDiagnostics(
+                <errors><![CDATA[
+BC30072: 'Case' can only appear inside a 'Select Case' statement.
+        Case 1 To From o In c Where True,
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BC36593: Expression of type 'Object' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+        Case 1 To From o In c Where True,
+                            ~
+BC36593: Expression of type 'Integer' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+            Is < From o In 2 Where False,
+                           ~
+BC36593: Expression of type 'Integer' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+            From o In 3 Where Nothing
+                      ~
+BC30071: 'Case Else' can only appear inside a 'Select Case' statement.
+        Case Else
+        ~~~~~~~~~
+BC30088: 'End Select' must be preceded by a matching 'Select Case'.
+        End Select
+        ~~~~~~~~~~
+                ]]></errors>)
+            Dim tree = compilation.SyntaxTrees(0)
+            Dim model = compilation.GetSemanticModel(tree)
+            Dim tokens = tree.GetCompilationUnitRoot().DescendantTokens()
+
+            ' First Case clause.
+            Dim expr = tokens.Single(Function(t) t.Kind = SyntaxKind.TrueKeyword).Parent
+            Dim info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+
+            ' Second Case clause.
+            expr = tokens.Single(Function(t) t.Kind = SyntaxKind.FalseKeyword).Parent
+            info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+
+            ' Third Case clause.
+            expr = tokens.Single(Function(t) t.Kind = SyntaxKind.NothingKeyword).Parent
+            info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+        End Sub
+
+        <WorkItem(233671, "https://devdiv.visualstudio.com/defaultcollection/DevDiv/_workitems#_a=edit&id=233671")>
+        <Fact()>
+        Public Sub QueryClauseInBadStatement_LoopUntil()
+            Dim compilation = CreateCompilationWithMscorlib(
+                <compilation>
+                    <file name="a.vb"><![CDATA[
+Class C
+    Shared Sub F(c As Object)
+        Loop Until From o In c Where True
+    End Sub
+End Class
+    ]]></file>
+                </compilation>)
+            compilation.AssertTheseDiagnostics(
+                <errors>
+BC30091: 'Loop' must be preceded by a matching 'Do'.
+        Loop Until From o In c Where True
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BC36593: Expression of type 'Object' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+        Loop Until From o In c Where True
+                             ~
+                </errors>)
+            Dim tree = compilation.SyntaxTrees(0)
+            Dim model = compilation.GetSemanticModel(tree)
+            Dim tokens = tree.GetCompilationUnitRoot().DescendantTokens()
+            Dim expr = tokens.Single(Function(t) t.Kind = SyntaxKind.TrueKeyword).Parent
+            Dim info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+        End Sub
+
+        <WorkItem(233671, "https://devdiv.visualstudio.com/defaultcollection/DevDiv/_workitems#_a=edit&id=233671")>
+        <Fact()>
+        Public Sub QueryClauseInBadStatement_LoopWhile()
+            Dim compilation = CreateCompilationWithMscorlib(
+                <compilation>
+                    <file name="a.vb"><![CDATA[
+Class C
+    Shared Sub F(c As Object)
+        Loop While From o In c Where True
+    End Sub
+End Class
+    ]]></file>
+                </compilation>)
+            compilation.AssertTheseDiagnostics(
+                <errors>
+BC30091: 'Loop' must be preceded by a matching 'Do'.
+        Loop While From o In c Where True
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BC36593: Expression of type 'Object' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+        Loop While From o In c Where True
+                             ~
+                </errors>)
+            Dim tree = compilation.SyntaxTrees(0)
+            Dim model = compilation.GetSemanticModel(tree)
+            Dim tokens = tree.GetCompilationUnitRoot().DescendantTokens()
+            Dim expr = tokens.Single(Function(t) t.Kind = SyntaxKind.TrueKeyword).Parent
+            Dim info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+        End Sub
+
+        <WorkItem(233671, "https://devdiv.visualstudio.com/defaultcollection/DevDiv/_workitems#_a=edit&id=233671")>
+        <Fact()>
+        Public Sub QueryClauseInBadStatement_Catch()
+            Dim compilation = CreateCompilationWithMscorlib(
+                <compilation>
+                    <file name="a.vb"><![CDATA[
+Class C
+    Shared Sub F(c As Object)
+        Catch e As System.Exception When From o In c Where True
+            F(From o in 2 Where False)
+        End Try
+    End Sub
+End Class
+    ]]></file>
+                </compilation>)
+            compilation.AssertTheseDiagnostics(
+                <errors>
+BC30380: 'Catch' cannot appear outside a 'Try' statement.
+        Catch e As System.Exception When From o In c Where True
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BC36593: Expression of type 'Object' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+        Catch e As System.Exception When From o In c Where True
+                                                   ~
+BC36593: Expression of type 'Integer' is not queryable. Make sure you are not missing an assembly reference and/or namespace import for the LINQ provider.
+            F(From o in 2 Where False)
+                        ~
+BC30383: 'End Try' must be preceded by a matching 'Try'.
+        End Try
+        ~~~~~~~
+                </errors>)
+            Dim tree = compilation.SyntaxTrees(0)
+            Dim model = compilation.GetSemanticModel(tree)
+            Dim tokens = tree.GetCompilationUnitRoot().DescendantTokens()
+            Dim expr = tokens.Single(Function(t) t.Kind = SyntaxKind.TrueKeyword).Parent
+            Dim info = model.GetSymbolInfo(expr)
+            Assert.Null(info.Symbol)
+        End Sub
+
     End Class
 End Namespace
