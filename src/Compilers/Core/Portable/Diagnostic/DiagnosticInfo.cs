@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using Roslyn.Utilities;
-using System.Threading;
 
 namespace Microsoft.CodeAnalysis
 {
@@ -336,7 +335,7 @@ namespace Microsoft.CodeAnalysis
             return String.Format(formatProvider, message, GetArgumentsToUse(formatProvider));
         }
 
-        protected object[] GetArgumentsToUse(IFormatProvider formatProvider)
+        internal object[] GetArgumentsToUse(IFormatProvider formatProvider)
         {
             object[] argumentsToUse = null;
             for (int i = 0; i < _arguments.Length; i++)
