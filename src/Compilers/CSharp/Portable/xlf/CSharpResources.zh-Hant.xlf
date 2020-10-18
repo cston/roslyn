@@ -797,6 +797,11 @@
         <target state="translated">參考指派的左側必須為參考本機或參數。</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">浮點 NaN 不可使用關聯性模式。</target>

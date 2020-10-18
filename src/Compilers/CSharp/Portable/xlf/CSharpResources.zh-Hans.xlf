@@ -797,6 +797,11 @@
         <target state="translated">ref 赋值左侧必须为 ref 本地函数或参数。</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">关系模式可能不能用于浮点 NaN。</target>

@@ -797,6 +797,11 @@
         <target state="translated">Левая часть выражения назначения ссылки должна быть локальной ссылкой или параметром.</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">Реляционные шаблоны не могут использоваться для NaN с плавающей запятой.</target>

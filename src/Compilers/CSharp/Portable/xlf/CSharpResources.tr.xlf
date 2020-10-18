@@ -797,6 +797,11 @@
         <target state="translated">ref atamasının sol tarafı, yerel ref veya parametresi olmalıdır.</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">İlişkisel desenler, kayan noktalı NaN için kullanılamaz.</target>

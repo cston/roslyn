@@ -177,6 +177,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         /// </summary>
         internal abstract bool IsMetadataOut { get; }
 
+        // PROTOTYPE: Should be abstract.
+        internal virtual bool DoesNotEscape => false;
+
         /// <summary>
         /// Returns true if the parameter explicitly specifies a default value to be passed
         /// when no value is provided as an argument to a call. 

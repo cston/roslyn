@@ -797,6 +797,11 @@
         <target state="translated">La parte sinistra di un'assegnazione ref deve essere un parametro o una variabile locale ref.</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">Non è possibile usare i criteri relazionali per un valore NaN a virgola mobile.</target>

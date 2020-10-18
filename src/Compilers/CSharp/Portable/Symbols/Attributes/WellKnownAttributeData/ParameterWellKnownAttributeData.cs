@@ -126,6 +126,22 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        private bool _hasDoesNotEscapeAttribute;
+        public bool HasDoesNotEscapeAttribute
+        {
+            get
+            {
+                VerifySealed(expected: true);
+                return _hasDoesNotEscapeAttribute;
+            }
+            set
+            {
+                VerifySealed(expected: false);
+                _hasDoesNotEscapeAttribute = value;
+                SetDataStored();
+            }
+        }
+
         private bool _hasEnumeratorCancellationAttribute;
         public bool HasEnumeratorCancellationAttribute
         {

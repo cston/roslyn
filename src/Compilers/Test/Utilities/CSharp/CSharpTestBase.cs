@@ -570,6 +570,18 @@ namespace System.Runtime.CompilerServices
     }
 }";
 
+        protected const string DoesNotEscapeAttributeDefinition =
+@"namespace System.Runtime.CompilerServices
+{
+    [System.AttributeUsage(
+        AttributeTargets.Class | AttributeTargets.Method | AttributeTargets.Parameter,
+        AllowMultiple = false,
+        Inherited = false)]
+    public sealed class DoesNotEscapeAttribute : Attribute
+    {
+    }
+}";
+
         protected static CSharpCompilationOptions WithNullableEnable(CSharpCompilationOptions options = null)
         {
             return WithNullable(options, NullableContextOptions.Enable);

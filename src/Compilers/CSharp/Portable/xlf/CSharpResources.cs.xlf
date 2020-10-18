@@ -797,6 +797,11 @@
         <target state="translated">Levá strana přiřazení odkazu musí být lokální proměnná nebo parametr odkazu.</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">Relační vzory se nedají použít pro hodnotu Není číslo s plovoucí desetinnou čárkou.</target>

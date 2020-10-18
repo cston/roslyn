@@ -1094,6 +1094,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 if (body != null)
                 {
                     DiagnosticsPass.IssueDiagnostics(_compilation, body, diagsForCurrentMethod, methodSymbol);
+                    DoesNotEscapeAnalysis.Analyze(body, diagsForCurrentMethod);
                 }
 
                 BoundBlock flowAnalyzedBody = null;

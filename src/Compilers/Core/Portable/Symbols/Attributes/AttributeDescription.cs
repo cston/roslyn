@@ -399,6 +399,7 @@ namespace Microsoft.CodeAnalysis
         internal static readonly AttributeDescription NotNullWhenAttribute = new AttributeDescription("System.Diagnostics.CodeAnalysis", "NotNullWhenAttribute", s_signatures_HasThis_Void_Boolean_Only);
         internal static readonly AttributeDescription DoesNotReturnIfAttribute = new AttributeDescription("System.Diagnostics.CodeAnalysis", "DoesNotReturnIfAttribute", s_signatures_HasThis_Void_Boolean_Only);
         internal static readonly AttributeDescription DoesNotReturnAttribute = new AttributeDescription("System.Diagnostics.CodeAnalysis", "DoesNotReturnAttribute", s_signatures_HasThis_Void_Only);
+        internal static readonly AttributeDescription DoesNotEscapeAttribute = new AttributeDescription("System.Runtime.CompilerServices", "DoesNotEscapeAttribute", s_signatures_HasThis_Void_Only);
         internal static readonly AttributeDescription MarshalAsAttribute = new AttributeDescription("System.Runtime.InteropServices", "MarshalAsAttribute", s_signaturesOfMarshalAsAttribute);
         internal static readonly AttributeDescription InAttribute = new AttributeDescription("System.Runtime.InteropServices", "InAttribute", s_signatures_HasThis_Void_Only);
         internal static readonly AttributeDescription OutAttribute = new AttributeDescription("System.Runtime.InteropServices", "OutAttribute", s_signatures_HasThis_Void_Only);

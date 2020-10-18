@@ -131,6 +131,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                                                   && !HasCallerFilePathAttribute
                                                   && HasCallerMemberNameAttribute;
 
+        internal override bool DoesNotEscape => GetDecodedWellKnownAttributeData()?.HasDoesNotEscapeAttribute == true;
+
         internal override FlowAnalysisAnnotations FlowAnalysisAnnotations
         {
             get
@@ -747,6 +749,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             {
                 arguments.GetOrCreateData<ParameterWellKnownAttributeData>().HasEnumeratorCancellationAttribute = true;
                 ValidateCancellationTokenAttribute(arguments.AttributeSyntaxOpt, (BindingDiagnosticBag)arguments.Diagnostics);
+            }
+            else if (attribute.IsTargetAttribute(this, AttributeDescription.DoesNotEscapeAttribute))
+            {
+                arguments.GetOrCreateData<ParameterWellKnownAttributeData>().HasDoesNotEscapeAttribute = true;
             }
         }
 

@@ -797,6 +797,11 @@
         <target state="translated">O lado esquerdo da atribuição ref precisa ser um parâmetro ou local ref.</target>
         <note />
       </trans-unit>
+      <trans-unit id="ERR_ReferenceMayEscape">
+        <source>Reference may escape.</source>
+        <target state="new">Reference may escape.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ERR_RelationalPatternWithNaN">
         <source>Relational patterns may not be used for a floating-point NaN.</source>
         <target state="translated">Os padrões relacionais não podem ser usados para um NaN de ponto flutuante.</target>
