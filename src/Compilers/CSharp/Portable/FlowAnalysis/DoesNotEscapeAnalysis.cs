@@ -9,16 +9,16 @@ namespace Microsoft.CodeAnalysis.CSharp
 {
     internal sealed class DoesNotEscapeAnalysis : BoundTreeWalker
     {
-        internal static void Analyze(BoundNode node, DiagnosticBag diagnostics)
+        internal static void Analyze(BoundNode node, BindingDiagnosticBag diagnostics)
         {
             var visitor = new DoesNotEscapeAnalysis(diagnostics);
             visitor.Visit(node);
         }
 
         private readonly ExpressionAnalysis _expressionAnalysis;
-        private readonly DiagnosticBag _diagnostics;
+        private readonly BindingDiagnosticBag _diagnostics;
 
-        private DoesNotEscapeAnalysis(DiagnosticBag diagnostics)
+        private DoesNotEscapeAnalysis(BindingDiagnosticBag diagnostics)
         {
             _expressionAnalysis = new ExpressionAnalysis(diagnostics);
             _diagnostics = diagnostics;
@@ -56,9 +56,9 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         private sealed class ExpressionAnalysis : BoundTreeVisitor<object?, bool>
         {
-            private readonly DiagnosticBag _diagnostics;
+            private readonly BindingDiagnosticBag _diagnostics;
 
-            internal ExpressionAnalysis(DiagnosticBag diagnostics)
+            internal ExpressionAnalysis(BindingDiagnosticBag diagnostics)
             {
                 _diagnostics = diagnostics;
             }
