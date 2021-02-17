@@ -26,7 +26,8 @@ Allocations may be explicit or implicit.
 
 Escape analysis will consider calls to unannotated methods with annotated variables as arguments or receiver. 
 
-Base classes and derived types can be annotated independently. When the compiler determines if an instance `Derived d` escapes the current scope, if there is a call to virtual method `d.M1()`, the compiler checks that the implementation of `Derived.M1()` is marked `[DoesNotEscape]`. If there is a call `M2(d)` to `M2([DoesNotEscape] Base b)`, the compiler checks that all virtual methods in `Base` that are annotated `[DoesNotEscape]` are also annotated in `Derived`.
+Base classes and derived types can be annotated independently. And a derived type may have a stronger or weaker contract than the base type.
+When the compiler determines if an instance `Derived d` escapes the current scope, if there is a call to virtual method `d.M1()`, the compiler checks that the implementation of `Derived.M1()` is marked `[DoesNotEscape]`. If there is a call `M2(d)` to `M2([DoesNotEscape] Base b)`, the compiler checks that all virtual methods in `Base` that are annotated `[DoesNotEscape]` are also annotated in `Derived`.
 
 It may be necessary to mark types that are considered annotated but contain no methods with `[DoesNotEscape]` attributes, so the compiler can differentiate an annotated type with no annotations from an unannotated type.
 
