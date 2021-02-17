@@ -5,7 +5,7 @@ Allow stack allocation of reference type instances that do not escape the alloca
 There are several common patterns where a reference type instance has a lifetime limited to the method in which it is allocated: builders, `params` arrays, delegates and closure classes.
 In some cases it should be possible to allocate those instances on the callstack rather than the heap.
 
-The fraction of allocations moved to the callstack may be small, but ideally the code changes required would be small too.
+For a given application, the fraction of allocations moved to the callstack may be small, but ideally the code changes required would be small too.
 For calling code that relies on approriately annotated libraries, there may be fewer heap allocations without any code changes.
 
 ## Detailed design
