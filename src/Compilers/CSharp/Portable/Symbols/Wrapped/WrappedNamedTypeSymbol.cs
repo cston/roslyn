@@ -194,6 +194,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         internal override bool IsInterpolatedStringHandlerType => _underlyingType.IsInterpolatedStringHandlerType;
 
+        public override bool IsAnonymousType => _underlyingType.IsAnonymousType;
+
         internal override ObsoleteAttributeData ObsoleteAttributeData
         {
             get { return _underlyingType.ObsoleteAttributeData; }

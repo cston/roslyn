@@ -89,6 +89,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { throw ExceptionUtilities.Unreachable; }
         }
 
+        public override bool IsAnonymousType => true;
+
         internal override bool IsRecord => false;
         internal override bool IsRecordStruct => false;
         internal override bool HasPossibleWellKnownCloneMethod() => false;

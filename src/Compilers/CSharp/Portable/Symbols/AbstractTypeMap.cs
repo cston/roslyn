@@ -45,7 +45,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             if (previous.IsUnboundGenericType)
                 return previous;
 
-            if (previous.IsAnonymousType)
+            if (previous.IsAnonymousType && !previous.IsDelegateType())
             {
                 ImmutableArray<TypeWithAnnotations> oldFieldTypes = AnonymousTypeManager.GetAnonymousTypePropertyTypesWithAnnotations(previous);
                 ImmutableArray<TypeWithAnnotations> newFieldTypes = SubstituteTypes(oldFieldTypes);

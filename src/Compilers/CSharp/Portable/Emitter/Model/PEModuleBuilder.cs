@@ -822,7 +822,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Emit
             Debug.Assert(diagnostics != null);
 
             // Anonymous type being translated
-            if (namedTypeSymbol.IsAnonymousType)
+            if (namedTypeSymbol.IsAnonymousType && !namedTypeSymbol.IsDelegateType())
             {
                 Debug.Assert(!needDeclaration);
                 namedTypeSymbol = AnonymousTypeManager.TranslateAnonymousTypeSymbol(namedTypeSymbol);
@@ -1185,7 +1185,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Emit
             NamedTypeSymbol container = methodSymbol.ContainingType;
 
             // Method of anonymous type being translated
-            if (container.IsAnonymousType)
+            if (container.IsAnonymousType && !container.IsDelegateType())
             {
                 Debug.Assert(!needDeclaration);
                 methodSymbol = AnonymousTypeManager.TranslateAnonymousTypeMethodSymbol(methodSymbol);

@@ -2968,15 +2968,15 @@ namespace Microsoft.CodeAnalysis.CSharp
                 canIgnoreAnyType(typeB) ||
                 typeA.Equals(typeB, TypeCompareKind.IgnoreCustomModifiersAndArraySizesAndLowerBounds | TypeCompareKind.IgnoreNullableModifiersForReferenceTypes | TypeCompareKind.IgnoreDynamicAndTupleNames); // Ignore TupleElementNames (see https://github.com/dotnet/roslyn/issues/23651).
 
-            bool canIgnoreAnyType(TypeSymbol type)
+            static bool canIgnoreAnyType(TypeSymbol type)
             {
                 return type.VisitType((t, unused1, unused2) => canIgnoreType(t), (object?)null) is object;
             }
-            bool canIgnoreType(TypeSymbol type)
+            static bool canIgnoreType(TypeSymbol type)
             {
-                return type.IsErrorType() || type.IsDynamic() || type.HasUseSiteError || (type.IsAnonymousType && canIgnoreAnonymousType((NamedTypeSymbol)type));
+                return type.IsErrorType() || type.IsDynamic() || type.HasUseSiteError || (type.IsAnonymousType && !type.IsDelegateType() && canIgnoreAnonymousType((NamedTypeSymbol)type));
             }
-            bool canIgnoreAnonymousType(NamedTypeSymbol type)
+            static bool canIgnoreAnonymousType(NamedTypeSymbol type)
             {
                 return AnonymousTypeManager.GetAnonymousTypePropertyTypesWithAnnotations(type).Any(t => canIgnoreAnyType(t.Type));
             }

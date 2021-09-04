@@ -5166,9 +5166,9 @@ class Program
 
             var identifiers = nodes.OfType<InvocationExpressionSyntax>().Where(i => i.Expression is IdentifierNameSyntax id && id.Identifier.Text == "Report").Select(i => i.ArgumentList.Arguments[0].Expression).ToArray();
             Assert.Equal(3, identifiers.Length);
-            VerifyExpressionType(model, identifiers[0], "<>F{00000001}<T, T> d", "<>F{00000001}<T, T>");
-            VerifyExpressionType(model, identifiers[1], "<>F{00000001}<U, U> d", "<>F{00000001}<U, U>");
-            VerifyExpressionType(model, identifiers[2], "<>F{00000001}<System.Double, System.Double> d", "<>F{00000001}<System.Double, System.Double>");
+            VerifySynthesizedDelegateType(model, identifiers[0], "<>F{00000001}<T, T> d", "<>F{00000001}<T, T>");
+            VerifySynthesizedDelegateType(model, identifiers[1], "<>F{00000001}<U, U> d", "<>F{00000001}<U, U>");
+            VerifySynthesizedDelegateType(model, identifiers[2], "<>F{00000001}<System.Double, System.Double> d", "<>F{00000001}<System.Double, System.Double>");
         }
 
         [Fact]
@@ -5992,12 +5992,14 @@ D4");
             Assert.Equal(expectedInvokeMethod, delegateType.DelegateInvokeMethod.ToTestDisplayString());
         }
 
-        private static void VerifyExpressionType(SemanticModel model, ExpressionSyntax variable, string expectedSymbol, string expectedType)
+        private static void VerifySynthesizedDelegateType(SemanticModel model, ExpressionSyntax variable, string expectedSymbol, string expectedType)
         {
             var symbol = model.GetSymbolInfo(variable).Symbol;
             Assert.Equal(expectedSymbol, symbol.ToTestDisplayString());
             var type = model.GetTypeInfo(variable).Type;
             Assert.Equal(expectedType, type.ToTestDisplayString());
+            Assert.False(type.CanBeReferencedByName);
+            Assert.True(type.IsAnonymousType);
         }
 
         [Fact]
