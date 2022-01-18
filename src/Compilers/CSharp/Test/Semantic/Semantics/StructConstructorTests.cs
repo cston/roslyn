@@ -893,6 +893,66 @@ class Program
                 Diagnostic(ErrorCode.ERR_UnassignedThis, "S2").WithArguments("S2.X").WithLocation(20, 12));
         }
 
+        [WorkItem(57870, "https://github.com/dotnet/roslyn/issues/57870")]
+        [Fact]
+        public void FieldInitializers_NoConstructor()
+        {
+            var source =
+@"#pragma warning disable 649
+using System;
+struct S
+{
+    internal object X = 1;
+    internal object Y;
+    public override string ToString() => (X, Y).ToString();
+}
+class Program
+{
+    static void Main()
+    {
+        S s;
+        s = new S() { X = 2, Y = 3 };
+        Console.WriteLine(s);
+        s = new S() { X = 4 };
+        Console.WriteLine(s);
+    }
+}";
+
+            var verifier = CompileAndVerify(source, options: TestOptions.DebugExe, expectedOutput:
+@"(2, 3)
+(4, )
+");
+            verifier.VerifyIL("S..ctor()",
+@"{
+  // Code size       20 (0x14)
+  .maxstack  2
+  IL_0000:  ldarg.0
+  IL_0001:  initobj    ""S""
+  IL_0007:  ldarg.0
+  IL_0008:  ldc.i4.1
+  IL_0009:  box        ""int""
+  IL_000e:  stfld      ""object S.X""
+  IL_0013:  ret
+}");
+
+            verifier = CompileAndVerify(source, options: TestOptions.ReleaseExe, expectedOutput:
+@"(2, 3)
+(4, )
+");
+            verifier.VerifyIL("S..ctor()",
+@"{
+  // Code size       20 (0x14)
+  .maxstack  2
+  IL_0000:  ldarg.0
+  IL_0001:  initobj    ""S""
+  IL_0007:  ldarg.0
+  IL_0008:  ldc.i4.1
+  IL_0009:  box        ""int""
+  IL_000e:  stfld      ""object S.X""
+  IL_0013:  ret
+}");
+        }
+
         [Fact]
         public void FieldInitializers_01()
         {
@@ -970,13 +1030,15 @@ class Program
   IL_0031:  ret
 }");
             verifier.VerifyIL("S1..ctor()",
-@"{
-  // Code size        8 (0x8)
+@"    {
+  // Code size       15 (0xf)
   .maxstack  2
   IL_0000:  ldarg.0
-  IL_0001:  ldnull
-  IL_0002:  stfld      ""object S1.X""
-  IL_0007:  ret
+  IL_0001:  initobj    ""S1""
+  IL_0007:  ldarg.0
+  IL_0008:  ldnull
+  IL_0009:  stfld      ""object S1.X""
+  IL_000e:  ret
 }");
             verifier.VerifyIL("S2..ctor()",
 @"{
@@ -1117,14 +1179,16 @@ class Program
   IL_00c0:  ret
 }");
             verifier.VerifyIL("S1..ctor()",
-@"{
-  // Code size       13 (0xd)
+@"   {
+  // Code size       20 (0x14)
   .maxstack  2
   IL_0000:  ldarg.0
-  IL_0001:  ldc.i4.1
-  IL_0002:  box        ""int""
-  IL_0007:  stfld      ""object S1.X""
-  IL_000c:  ret
+  IL_0001:  initobj    ""S1""
+  IL_0007:  ldarg.0
+  IL_0008:  ldc.i4.1
+  IL_0009:  box        ""int""
+  IL_000e:  stfld      ""object S1.X""
+  IL_0013:  ret
 }");
             verifier.VerifyIL("S2..ctor()",
 @"{
@@ -1257,14 +1321,16 @@ class Program
   IL_00a1:  ret
 }");
             verifier.VerifyIL("S1..ctor()",
-@"{
-  // Code size       13 (0xd)
+@" {
+  // Code size       20 (0x14)
   .maxstack  2
   IL_0000:  ldarg.0
-  IL_0001:  ldc.i4.1
-  IL_0002:  box        ""int""
-  IL_0007:  stfld      ""object S1.<X>k__BackingField""
-  IL_000c:  ret
+  IL_0001:  initobj    ""S1""
+  IL_0007:  ldarg.0
+  IL_0008:  ldc.i4.1
+  IL_0009:  box        ""int""
+  IL_000e:  stfld      ""object S1.<X>k__BackingField""
+  IL_0013:  ret
 }");
             verifier.VerifyIL("S2..ctor()",
 @"{
@@ -1392,12 +1458,14 @@ class Program
 }");
             verifier.VerifyIL("A<T>.S1..ctor()",
 @"{
-  // Code size        8 (0x8)
+  // Code size       15 (0xf)
   .maxstack  2
   IL_0000:  ldarg.0
-  IL_0001:  ldc.i4.1
-  IL_0002:  stfld      ""int A<T>.S1.<X>k__BackingField""
-  IL_0007:  ret
+  IL_0001:  initobj    ""A<T>.S1""
+  IL_0007:  ldarg.0
+  IL_0008:  ldc.i4.1
+  IL_0009:  stfld      ""int A<T>.S1.<X>k__BackingField""
+  IL_000e:  ret
 }");
             verifier.VerifyIL("A<T>.S2..ctor()",
 @"{

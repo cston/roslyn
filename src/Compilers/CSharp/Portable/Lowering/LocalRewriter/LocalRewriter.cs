@@ -588,6 +588,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             ImmutableArray<BoundStatement> originalStatements = node.Statements;
             var statements = ArrayBuilder<BoundStatement?>.GetInstance(node.Statements.Length);
+
             foreach (var initializer in originalStatements)
             {
                 if (IsFieldOrPropertyInitializer(initializer))
@@ -660,6 +661,25 @@ namespace Microsoft.CodeAnalysis.CSharp
                 }
 
                 statements.Count = remaining; // trim any trailing nulls
+
+                if (_factory.CurrentFunction.IsDefaultValueTypeConstructor(requireZeroInit: false))
+                {
+                    Debug.Assert(originalStatements.Any(statement => IsFieldOrPropertyInitializer(statement)));
+                    var syntax = node.Syntax;
+                    var valueType = _factory.CurrentType;
+                    Debug.Assert(valueType is { });
+                    statements.Insert(
+                        0,
+                        new BoundExpressionStatement(
+                            syntax,
+                            new BoundAssignmentOperator(
+                                syntax,
+                                new BoundThisReference(syntax, valueType),
+                                new BoundDefaultExpression(syntax, valueType),
+                                isRef: false,
+                                valueType)));
+                }
+
                 rewrittenStatements = statements.ToImmutableAndFree()!;
             }
 
