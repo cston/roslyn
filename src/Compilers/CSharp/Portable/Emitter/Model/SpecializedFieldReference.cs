@@ -8,6 +8,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Microsoft.CodeAnalysis.Emit;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.Emit
 {
@@ -71,6 +72,15 @@ namespace Microsoft.CodeAnalysis.CSharp.Emit
             else
             {
                 return new Cci.ModifiedTypeReference(type, ImmutableArray<Cci.ICustomModifier>.CastUp(customModifiers));
+            }
+        }
+
+        bool Cci.IFieldReference.IsByRef
+        {
+            get
+            {
+                // PROTOTYPE:
+                throw ExceptionUtilities.Unreachable;
             }
         }
 

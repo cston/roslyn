@@ -65,6 +65,12 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Emit
             End If
         End Function
 
+        Private ReadOnly Property IFieldReferenceIsByRef As Boolean Implements Cci.IFieldReference.IsByRef
+            Get
+                Return False
+            End Get
+        End Property
+
         Private Function IFieldReferenceGetResolvedField(context As EmitContext) As Cci.IFieldDefinition Implements Cci.IFieldReference.GetResolvedField
             Return Nothing
         End Function

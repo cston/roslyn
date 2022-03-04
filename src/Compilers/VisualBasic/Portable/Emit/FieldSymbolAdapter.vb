@@ -32,6 +32,12 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
             End If
         End Function
 
+        Private ReadOnly Property IFieldReferenceIsByRef As Boolean Implements IFieldReference.IsByRef
+            Get
+                Return False
+            End Get
+        End Property
+
         Private Function IFieldReferenceGetResolvedField(context As EmitContext) As IFieldDefinition Implements IFieldReference.GetResolvedField
             Return ResolvedFieldImpl(DirectCast(context.Module, PEModuleBuilder))
         End Function

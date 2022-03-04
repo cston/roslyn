@@ -201,6 +201,8 @@ namespace Microsoft.CodeAnalysis.Emit.NoPia
                 return UnderlyingField.GetType(context);
             }
 
+            bool Cci.IFieldReference.IsByRef => false;
+
             Cci.IFieldDefinition Cci.IFieldReference.GetResolvedField(EmitContext context)
             {
                 return this;

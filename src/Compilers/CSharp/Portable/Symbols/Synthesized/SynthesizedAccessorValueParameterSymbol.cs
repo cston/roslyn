@@ -5,7 +5,6 @@
 #nullable disable
 
 using System.Collections.Immutable;
-using System.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Emit;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.PooledObjects;
@@ -24,7 +23,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             : base(accessor, ordinal, paramType, RefKind.None, ParameterSymbol.ValueParameterName, accessor.Locations,
                    syntaxRef: null,
                    isParams: false,
-                   isExtensionMethodThis: false)
+                   isExtensionMethodThis: false,
+                   scoped: false) // PROTOTYPE: How does the user specify the scope of the implicit value parameter?
         {
         }
 

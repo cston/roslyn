@@ -1920,6 +1920,15 @@ tryAgain:
                     ref signatureReader,
                     out typeCode);
 
+                if (typeCode == SignatureTypeCode.ByReference)
+                {
+                    // PROTOTYPE: Should customModifiers decoded above be returned as
+                    // refCustomModifiers? Compare with DecodeParameterOrThrow().
+                    customModifiers = DecodeModifiersOrThrow(
+                    ref signatureReader,
+                    out typeCode);
+                }
+
                 return DecodeTypeOrThrow(ref signatureReader, typeCode, out _);
             }
             catch (UnsupportedSignatureContent)

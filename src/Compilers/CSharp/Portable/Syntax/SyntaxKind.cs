@@ -310,7 +310,10 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// <summary>Represents <see langword="implicit"/>.</summary>
         ImplicitKeyword = 8384,
 
-        // contextual keywords
+        /// <summary>Represents <see langword="scoped"/>.</summary>
+        ScopedKeyword = 8403,
+        /// <summary>Represents <see langword="unscoped"/>.</summary>
+        UnscopedKeyword = 8404,
         /// <summary>Represents <see langword="yield"/>.</summary>
         YieldKeyword = 8405,
         /// <summary>Represents <see langword="partial"/>.</summary>
@@ -398,7 +401,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         UnmanagedKeyword = 8446,
 
         // when adding a contextual keyword following functions must be adapted:
-        // <see cref="SyntaxFacts.GetContextualKeywordKinds"/>
+        // <see cref="SyntaxFacts.GetContextualKeywordKinds()"/>
         // <see cref="SyntaxFacts.IsContextualKeyword(SyntaxKind)"/>
         // <see cref="SyntaxFacts.GetContextualKeywordKind(string)"/>
         // <see cref="SyntaxFacts.GetText(SyntaxKind)"/>

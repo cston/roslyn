@@ -47,6 +47,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        bool Cci.IFieldReference.IsByRef => AdaptedFieldSymbol.RefKind != RefKind.None;
+
         Cci.IFieldDefinition Cci.IFieldReference.GetResolvedField(EmitContext context)
         {
             return ResolvedFieldImpl((PEModuleBuilder)context.Module);

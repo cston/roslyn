@@ -2555,5 +2555,83 @@ class C
             Verify(FormatResult(rootExpr, value),
                 EvalResult(rootExpr, message, "", rootExpr));
         }
+
+        [Fact]
+        public void RefField_01()
+        {
+            var source =
+@".class private System.Runtime.CompilerServices.IsByRefLikeAttribute extends [mscorlib]System.Attribute
+{
+  .method public hidebysig specialname rtspecialname instance void .ctor() cil managed { ret }
+}
+.class public sealed S extends [mscorlib]System.ValueType
+{
+  .custom instance void System.Runtime.CompilerServices.IsByRefLikeAttribute::.ctor() = ( 01 00 00 00 )
+  .field public string Str;
+  .field public string& RStr;
+  .method public hidebysig specialname rtspecialname instance void .ctor(string s) cil managed
+  {
+    ldarg.0
+    ldarg.1
+    stfld string S::Str
+    ldarg.0
+    ldarg.0
+    ldflda string S::Str
+    stfld string& S::RStr
+    ret
+  }
+}";
+            CommonTestBase.EmitILToArray(source, appendDefaultHeader: true, includePdb: false, assemblyBytes: out var assembly0, pdbBytes: out var pdb0);
+            var runtime = new DkmClrRuntimeInstance(ReflectionUtilities.GetMscorlib(ReflectionUtilities.Load(assembly0)));
+            using (runtime.Load())
+            {
+                var type = runtime.GetType("S");
+                var value = type.Instantiate();
+                var evalResult = FormatResult("s", value);
+                var children = GetChildren(evalResult);
+                Verify(children,
+                    EvalResult(
+                        "Str",
+                        "...",
+                        "...",
+                        "s.Str",
+                        DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.CanFavorite),
+                    EvalResult(
+                        "RStr",
+                        "...",
+                        "...",
+                        "s.RStr",
+                        DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.CanFavorite));
+            }
+        }
+
+        [Fact]
+        public void RefField_02()
+        {
+            var source =
+@"struct S
+{
+    public S(ref string s)
+    {
+        F = s;
+    }
+    public ref string F;
+}";
+            var runtime = new DkmClrRuntimeInstance(ReflectionUtilities.GetMscorlib(GetAssembly(source)));
+            using (runtime.Load())
+            {
+                var type = runtime.GetType("S");
+                var value = type.Instantiate("Hello, world!");
+                var evalResult = FormatResult("s", value);
+                var children = GetChildren(evalResult);
+                Verify(children,
+                    EvalResult(
+                        "F",
+                        "Hello, world!",
+                        "...",
+                        "s.F",
+                        DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.CanFavorite));
+            }
+        }
     }
 }

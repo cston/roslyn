@@ -694,6 +694,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             var typeSyntax = node.Declaration.Type.SkipRef(out _);
             bool isConst = node.IsConst;
 
+            BindLocalDeclarationModifiers(node, diagnostics, out bool scoped); // PROTOTYPE: Attach 'scoped' to LocalSymbols.
+
             bool isVar;
             AliasSymbol alias;
             TypeWithAnnotations declType = BindVariableTypeWithAnnotations(node.Declaration, diagnostics, typeSyntax, ref isConst, isVar: out isVar, alias: out alias);
@@ -703,7 +705,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             int variableCount = variableList.Count;
             if (variableCount == 1)
             {
-                return BindVariableDeclaration(kind, isVar, variableList[0], typeSyntax, declType, alias, diagnostics, includeBoundType: true, associatedSyntaxNode: node);
+                return BindVariableDeclaration(kind, isVar, variableList[0], typeSyntax, declType, alias, diagnostics, includeBoundType: true, scoped: scoped, associatedSyntaxNode: node);
             }
             else
             {
@@ -712,9 +714,33 @@ namespace Microsoft.CodeAnalysis.CSharp
                 foreach (var variableDeclarationSyntax in variableList)
                 {
                     bool includeBoundType = i == 0; //To avoid duplicated expressions, only the first declaration should contain the bound type.
-                    boundDeclarations[i++] = BindVariableDeclaration(kind, isVar, variableDeclarationSyntax, typeSyntax, declType, alias, diagnostics, includeBoundType);
+                    boundDeclarations[i++] = BindVariableDeclaration(kind, isVar, variableDeclarationSyntax, typeSyntax, declType, alias, diagnostics, includeBoundType, scoped: scoped);
                 }
                 return new BoundMultipleLocalDeclarations(node, boundDeclarations.AsImmutableOrNull());
+            }
+        }
+
+        // PROTOTYPE: Check all code paths that bind local declarations use this.
+        private static void BindLocalDeclarationModifiers(LocalDeclarationStatementSyntax decl, BindingDiagnosticBag diagnostics, out bool scoped)
+        {
+            scoped = false;
+            foreach (var modifier in decl.Modifiers)
+            {
+                // PROTOTYPE: Report redundant and conflicting modifiers.
+                switch (modifier.Kind())
+                {
+                    // PROTOTYPE: Share code with ParameterHelpers.CheckParameterModifiers().
+                    case SyntaxKind.IdentifierToken when modifier.ContextualKind() is SyntaxKind.ScopedKeyword or SyntaxKind.UnscopedKeyword:
+                        if (MessageID.IDS_FeatureRefFields.GetFeatureAvailabilityDiagnosticInfo((CSharpParseOptions)decl.SyntaxTree.Options) is { } diagnosticInfo)
+                        {
+                            diagnostics.Add(diagnosticInfo, modifier.GetLocation());
+                        }
+                        // PROTOTYPE: Check for duplicate or conflicting modifiers (scope and escapes); check ordering.
+                        scoped = modifier.ContextualKind() is SyntaxKind.ScopedKeyword;
+                        break;
+                    default:
+                        throw ExceptionUtilities.UnexpectedValue(modifier.Kind());
+                }
             }
         }
 
@@ -932,6 +958,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             AliasSymbol aliasOpt,
             BindingDiagnosticBag diagnostics,
             bool includeBoundType,
+            bool scoped,
             CSharpSyntaxNode associatedSyntaxNode = null)
         {
             Debug.Assert(declarator != null);
@@ -945,6 +972,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                                            aliasOpt,
                                            diagnostics,
                                            includeBoundType,
+                                           scoped,
                                            associatedSyntaxNode);
         }
 
@@ -958,6 +986,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             AliasSymbol aliasOpt,
             BindingDiagnosticBag diagnostics,
             bool includeBoundType,
+            bool scoped,
             CSharpSyntaxNode associatedSyntaxNode = null)
         {
             Debug.Assert(declarator != null);
@@ -1084,9 +1113,10 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 var currentScope = LocalScopeDepth;
 
-                localSymbol.SetValEscape(GetValEscape(initializerOpt, currentScope));
+                localSymbol.SetValEscape(Math.Max(GetValEscape(initializerOpt, currentScope), scoped ? TopLevelScope : ExternalScope));
 
-                if (localSymbol.RefKind != RefKind.None)
+                if (localSymbol.RefKind != RefKind.None ||
+                    declTypeOpt.Type?.IsRefLikeType == true)
                 {
                     localSymbol.SetRefEscape(GetRefEscape(initializerOpt, currentScope));
                 }
@@ -2653,7 +2683,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 var variableDeclarator = variables[i];
                 bool includeBoundType = i == 0; //To avoid duplicated expressions, only the first declaration should contain the bound type.
-                var declaration = BindVariableDeclaration(localKind, isVar, variableDeclarator, typeSyntax, declType, alias, diagnostics, includeBoundType);
+                var declaration = BindVariableDeclaration(localKind, isVar, variableDeclarator, typeSyntax, declType, alias, diagnostics, includeBoundType, scoped: /*PROTOTYPE:*/false);
 
                 declarationArray[i] = declaration;
             }

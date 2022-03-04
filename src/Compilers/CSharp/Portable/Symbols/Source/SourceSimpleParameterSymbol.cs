@@ -74,6 +74,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return false; }
         }
 
+        internal override bool IsScoped => false;
+
         internal override bool IsIDispatchConstant
         {
             get { return false; }

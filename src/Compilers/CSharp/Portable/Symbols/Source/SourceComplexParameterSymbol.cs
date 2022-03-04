@@ -7,7 +7,6 @@
 using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -19,7 +18,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
     /// <summary>
     /// A source parameter, potentially with a default value, attributes, etc.
     /// </summary>
-    internal class SourceComplexParameterSymbol : SourceParameterSymbol, IAttributeTargetSymbol
+    internal abstract class SourceComplexParameterSymbol : SourceParameterSymbol, IAttributeTargetSymbol
     {
         [Flags]
         private enum ParameterSyntaxKind : byte
@@ -28,13 +27,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             ParamsParameter = 1,
             ExtensionThisParameter = 2,
             DefaultParameter = 4,
+            Scoped = 8,
         }
 
         private readonly SyntaxReference _syntaxRef;
         private readonly ParameterSyntaxKind _parameterSyntaxKind;
 
+        private ThreeState _lazyHasOptionalAttribute; // follows _parameterSyntaxKind to reduce size
         private CustomAttributesBag<CSharpAttributeData> _lazyCustomAttributesBag;
-        private ThreeState _lazyHasOptionalAttribute;
         protected ConstantValue _lazyDefaultSyntaxValue;
 
         internal SourceComplexParameterSymbol(
@@ -46,7 +46,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             ImmutableArray<Location> locations,
             SyntaxReference syntaxRef,
             bool isParams,
-            bool isExtensionMethodThis)
+            bool isExtensionMethodThis,
+            bool scoped)
             : base(owner, parameterType, ordinal, refKind, name, locations)
         {
             Debug.Assert((syntaxRef == null) || (syntaxRef.GetSyntax().IsKind(SyntaxKind.Parameter)));
@@ -62,6 +63,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             if (isExtensionMethodThis)
             {
                 _parameterSyntaxKind |= ParameterSyntaxKind.ExtensionThisParameter;
+            }
+
+            if (scoped)
+            {
+                _parameterSyntaxKind |= ParameterSyntaxKind.Scoped;
             }
 
             var parameterSyntax = this.CSharpSyntaxNode;
@@ -1419,7 +1425,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         internal override bool IsExtensionMethodThis => (_parameterSyntaxKind & ParameterSyntaxKind.ExtensionThisParameter) != 0;
 
-        public override ImmutableArray<CustomModifier> RefCustomModifiers => ImmutableArray<CustomModifier>.Empty;
+        internal override bool IsScoped => (_parameterSyntaxKind & ParameterSyntaxKind.Scoped) != 0;
+
+        public abstract override ImmutableArray<CustomModifier> RefCustomModifiers { get; }
 
         internal override void ForceComplete(SourceLocation locationOpt, CancellationToken cancellationToken)
         {
@@ -1429,11 +1437,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         }
     }
 
-    internal sealed class SourceComplexParameterSymbolWithCustomModifiersPrecedingByRef : SourceComplexParameterSymbol
+    internal sealed class SourceComplexParameterSymbolWithCustomModifiers : SourceComplexParameterSymbol
     {
         private readonly ImmutableArray<CustomModifier> _refCustomModifiers;
 
-        internal SourceComplexParameterSymbolWithCustomModifiersPrecedingByRef(
+        internal SourceComplexParameterSymbolWithCustomModifiers(
             Symbol owner,
             int ordinal,
             TypeWithAnnotations parameterType,
@@ -1443,11 +1451,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             ImmutableArray<Location> locations,
             SyntaxReference syntaxRef,
             bool isParams,
-            bool isExtensionMethodThis)
-            : base(owner, ordinal, parameterType, refKind, name, locations, syntaxRef, isParams, isExtensionMethodThis)
+            bool isExtensionMethodThis,
+            bool scoped)
+            : base(owner, ordinal, parameterType, refKind, name, locations, syntaxRef, isParams, isExtensionMethodThis, scoped)
         {
-            Debug.Assert(!refCustomModifiers.IsEmpty);
-
             _refCustomModifiers = refCustomModifiers;
 
             Debug.Assert(refKind != RefKind.None || _refCustomModifiers.IsEmpty);

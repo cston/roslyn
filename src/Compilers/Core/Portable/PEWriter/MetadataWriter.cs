@@ -3337,6 +3337,12 @@ namespace Microsoft.Cci
         private void SerializeFieldSignature(IFieldReference fieldReference, BlobBuilder builder)
         {
             var typeEncoder = new BlobEncoder(builder).FieldSignature();
+            // PROTOTYPE: Add 'bool isByRef' parameter to BlobEncoder.FieldSignature()
+            // and move the WriteByte() call there.
+            if (fieldReference.IsByRef)
+            {
+                typeEncoder.Builder.WriteByte((byte)SignatureTypeCode.ByReference);
+            }
             SerializeTypeReference(typeEncoder, fieldReference.GetType(Context));
         }
 

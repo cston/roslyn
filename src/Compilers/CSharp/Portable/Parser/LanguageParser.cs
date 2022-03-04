@@ -1163,6 +1163,10 @@ tryAgain:
                             return DeclarationModifiers.Partial;
                         case SyntaxKind.AsyncKeyword:
                             return DeclarationModifiers.Async;
+                        case SyntaxKind.ScopedKeyword:
+                            return DeclarationModifiers.Scoped;
+                        case SyntaxKind.UnscopedKeyword:
+                            return DeclarationModifiers.Unscoped;
                     }
 
                     goto default;
@@ -2874,7 +2878,7 @@ parse_member_name:;
 parse_member_name:;
                     ExplicitInterfaceSpecifierSyntax explicitInterfaceOpt;
 
-                    // If we've seen the ref keyword, we know we must have an indexer, method, or property.
+                    // If we've seen the ref keyword, we know we must have an indexer, method, field, or property.
                     if (type.Kind != SyntaxKind.RefType)
                     {
                         // Check here for operators
@@ -2883,11 +2887,11 @@ parse_member_name:;
                         {
                             return this.ParseOperatorDeclaration(attributes, modifiers, type, explicitInterfaceOpt);
                         }
+                    }
 
-                        if (IsFieldDeclaration(isEvent: false))
-                        {
-                            return this.ParseNormalFieldDeclaration(attributes, modifiers, type, parentKind);
-                        }
+                    if (IsFieldDeclaration(isEvent: false))
+                    {
+                        return this.ParseNormalFieldDeclaration(attributes, modifiers, type, parentKind);
                     }
 
                     // At this point we can either have indexers, methods, or 
@@ -4371,7 +4375,7 @@ tryAgain:
                     return this.IsTrueIdentifier();
 
                 default:
-                    return IsParameterModifier(this.CurrentToken.Kind) || IsPredefinedType(this.CurrentToken.Kind);
+                    return IsParameterModifier(this.CurrentToken) || IsPredefinedType(this.CurrentToken.Kind);
             }
         }
 
@@ -4555,9 +4559,9 @@ tryAgain:
 
 #nullable disable
 
-        private static bool IsParameterModifier(SyntaxKind kind, bool isFunctionPointerParameter = false)
+        private static bool IsParameterModifier(SyntaxToken token, bool isFunctionPointerParameter = false)
         {
-            switch (kind)
+            switch (token.Kind)
             {
                 case SyntaxKind.ThisKeyword:
                 case SyntaxKind.RefKeyword:
@@ -4568,12 +4572,19 @@ tryAgain:
                     return true;
             }
 
+            switch (token.ContextualKind)
+            {
+                case SyntaxKind.ScopedKeyword:
+                case SyntaxKind.UnscopedKeyword:
+                    return true;
+            }
+
             return false;
         }
 
         private void ParseParameterModifiers(SyntaxListBuilder modifiers, bool isFunctionPointerParameter = false)
         {
-            while (IsParameterModifier(this.CurrentToken.Kind, isFunctionPointerParameter))
+            while (IsParameterModifier(this.CurrentToken, isFunctionPointerParameter))
             {
                 var modifier = this.EatToken();
 
@@ -7925,6 +7936,11 @@ done:;
                 return true;
             }
 
+            if (this.CurrentToken.ContextualKind is SyntaxKind.ScopedKeyword or SyntaxKind.UnscopedKeyword)
+            {
+                return true;
+            }
+
             // note: `using (` and `await using (` are already handled in ParseStatementCore.
             if (tk == SyntaxKind.UsingKeyword)
             {
@@ -9949,6 +9965,8 @@ tryAgain:
                 case SyntaxKind.StaticKeyword:
                 case SyntaxKind.ReadOnlyKeyword:
                 case SyntaxKind.VolatileKeyword:
+                case SyntaxKind.ScopedKeyword:
+                case SyntaxKind.UnscopedKeyword:
                     return true;
                 default:
                     return false;
@@ -11692,6 +11710,14 @@ tryAgain:
 
                     _ = ParseAttributeDeclarations();
 
+                    switch (this.CurrentToken.ContextualKind)
+                    {
+                        case SyntaxKind.ScopedKeyword:
+                        case SyntaxKind.UnscopedKeyword:
+                            this.EatToken();
+                            break;
+                    }
+
                     // Eat 'out', 'ref', and 'in'. Even though not allowed in a lambda,
                     // we treat `params` similarly for better error recovery.
                     switch (this.CurrentToken.Kind)
@@ -13138,7 +13164,7 @@ tryAgain:
 
             // Params are actually illegal in a lambda, but we'll allow it for error recovery purposes and
             // give the "params unexpected" error at semantic analysis time.
-            bool hasModifier = IsParameterModifier(this.CurrentToken.Kind);
+            bool hasModifier = IsParameterModifier(this.CurrentToken);
 
             TypeSyntax paramType = null;
             SyntaxListBuilder modifiers = _pool.Allocate();

@@ -328,6 +328,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     return DeclarationModifiers.Volatile;
                 case SyntaxKind.RefKeyword:
                     return DeclarationModifiers.Ref;
+                case SyntaxKind.ScopedKeyword:
+                    return DeclarationModifiers.Scoped;
+                case SyntaxKind.UnscopedKeyword:
+                    return DeclarationModifiers.Unscoped;
                 default:
                     throw ExceptionUtilities.UnexpectedValue(kind);
             }

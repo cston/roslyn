@@ -1075,7 +1075,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         public static IEnumerable<SyntaxKind> GetContextualKeywordKinds()
         {
-            for (int i = (int)SyntaxKind.YieldKeyword; i <= (int)SyntaxKind.UnmanagedKeyword; i++)
+            for (int i = (int)SyntaxKind.ScopedKeyword; i <= (int)SyntaxKind.UnmanagedKeyword; i++)
             {
                 yield return (SyntaxKind)i;
             }
@@ -1085,6 +1085,8 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             switch (kind)
             {
+                case SyntaxKind.ScopedKeyword:
+                case SyntaxKind.UnscopedKeyword:
                 case SyntaxKind.YieldKeyword:
                 case SyntaxKind.PartialKeyword:
                 case SyntaxKind.FromKeyword:
@@ -1161,6 +1163,10 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             switch (text)
             {
+                case "scoped":
+                    return SyntaxKind.ScopedKeyword;
+                case "unscoped":
+                    return SyntaxKind.UnscopedKeyword;
                 case "yield":
                     return SyntaxKind.YieldKeyword;
                 case "partial":
@@ -1592,6 +1598,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     return "annotations";
 
                 // contextual keywords
+                case SyntaxKind.ScopedKeyword:
+                    return "scoped";
+                case SyntaxKind.UnscopedKeyword:
+                    return "unscoped";
                 case SyntaxKind.YieldKeyword:
                     return "yield";
                 case SyntaxKind.PartialKeyword:

@@ -259,6 +259,11 @@ namespace Microsoft.Cci
         ITypeReference GetType(EmitContext context);
 
         /// <summary>
+        /// True if the field is passed by reference (using a managed pointer).
+        /// </summary>
+        bool IsByRef { get; }
+
+        /// <summary>
         /// The Field being referred to.
         /// </summary>
         IFieldDefinition? GetResolvedField(EmitContext context);

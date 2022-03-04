@@ -2584,10 +2584,15 @@ moreArguments:
             {
                 case BoundKind.DefaultLiteral:
                 case BoundKind.DefaultExpression:
-                case BoundKind.Parameter:
                 case BoundKind.ThisReference:
                     // always returnable
                     return Binder.ExternalScope;
+
+                case BoundKind.Parameter:
+                    var parameter = (SourceParameterSymbol)((BoundParameter)expr).ParameterSymbol;
+                    return parameter.IsScoped ?
+                        Binder.TopLevelScope :
+                        Binder.ExternalScope;
 
                 case BoundKind.FromEndIndexExpression:
                     // We are going to call a constructor that takes an integer and a bool. Cannot leak any references through them.
@@ -2989,9 +2994,18 @@ moreArguments:
             {
                 case BoundKind.DefaultLiteral:
                 case BoundKind.DefaultExpression:
-                case BoundKind.Parameter:
                 case BoundKind.ThisReference:
                     // always returnable
+                    return true;
+
+                case BoundKind.Parameter:
+                    var parameter = (SourceParameterSymbol)((BoundParameter)expr).ParameterSymbol;
+                    if (parameter.IsScoped)
+                    {
+                        // PROTOTYPE: Add specific error.
+                        Error(diagnostics, ErrorCode.ERR_EscapeLocal, node, parameter);
+                        return false;
+                    }
                     return true;
 
                 case BoundKind.TupleLiteral:

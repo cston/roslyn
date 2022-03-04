@@ -63,6 +63,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        // PROTOTYPE: Should be 'abstract'.
+        // PROTOTYPE: Test retargeting and substituted symbols.
+        public virtual RefKind RefKind => RefKind.None;
+
         public abstract FlowAnalysisAnnotations FlowAnalysisAnnotations { get; }
 
         /// <summary>
