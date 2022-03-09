@@ -1627,6 +1627,16 @@
         <target state="translated">Tür adı yalnızca küçük harfli ascii karakterleri içerir. Bu tür adlar dil için ayrılmış hale gelebilir.</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField">
+        <source>Method '{0}' may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method '{0}' may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField_Title">
+        <source>Method may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_MethGrpToNonDel">
         <source>Converting method group '{0}' to non-delegate type '{1}'. Did you intend to invoke the method?</source>
         <target state="translated">“{0}” yöntem grubunu temsilci olmayan tip “{1}”e dönüştürme. Yöntemi çağırmayı düşündünüz mü?</target>

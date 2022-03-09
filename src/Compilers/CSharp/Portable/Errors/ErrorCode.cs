@@ -2049,6 +2049,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         ERR_NoEnumConstraint = 9010,
         ERR_NoDelegateConstraint = 9011,
         ERR_MisplacedRecord = 9012,
+        WRN_MayCaptureRefField = 9060,
 
         #endregion
 

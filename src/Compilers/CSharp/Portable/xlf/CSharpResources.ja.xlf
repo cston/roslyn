@@ -1627,6 +1627,16 @@
         <target state="translated">型名には、小文字の ASCII 文字のみが含まれています。このような名前は、プログラミング言語用に予約されている可能性があります。</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField">
+        <source>Method '{0}' may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method '{0}' may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField_Title">
+        <source>Method may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_MethGrpToNonDel">
         <source>Converting method group '{0}' to non-delegate type '{1}'. Did you intend to invoke the method?</source>
         <target state="translated">メソッド グループ '{0}' を非デリゲート型 '{1}' に変換中です。このメソッドを呼び出すつもりでしたか?</target>

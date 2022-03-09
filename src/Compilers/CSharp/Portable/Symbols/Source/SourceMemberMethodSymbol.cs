@@ -300,6 +300,77 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         protected abstract void MethodChecks(BindingDiagnosticBag diagnostics);
 
         /// <summary>
+        /// Returns true if a warning should be reported that the method may capture a ref parameter
+        /// in a ref field. Typically, this returns true if the method returns a ref struct, from the return
+        /// value or a ref or from an out or ref parameter, and the method has a ref or in parameter.
+        /// </summary>
+        private bool WarnMayCaptureRefField()
+        {
+            if (this.IsImplicitlyDeclared)
+            {
+                return false;
+            }
+
+            int nReturnedRefStructs = 0; // return values or out parameters that are ref structs
+            int nRefParameterRefStructs = 0; // ref parameters that are ref structs
+            int nRefOrInParameters = 0; // ref or in parameters
+
+            // Consider 'this' if an instance method.
+            if (!IsStatic)
+            {
+                if (ContainingType.IsRefLikeType)
+                {
+                    nRefParameterRefStructs++;
+                }
+                else if (ContainingType.IsStructType()) // PROTOTYPE: What not include reference types?
+                {
+                    nRefOrInParameters++;
+                }
+            }
+
+            // Consider the return value if a ref struct returned by value.
+            if (!ReturnsVoid && RefKind == RefKind.None && ReturnType.IsRefLikeType)
+            {
+                nReturnedRefStructs++;
+            }
+
+            // Consider ref parameters.
+            foreach (var parameter in Parameters)
+            {
+                switch (parameter.RefKind)
+                {
+                    case RefKind.Out:
+                        if (parameter.Type.IsRefLikeType)
+                        {
+                            nReturnedRefStructs++;
+                        }
+                        break;
+                    case RefKind.Ref:
+                        if (parameter.Type.IsRefLikeType)
+                        {
+                            nRefParameterRefStructs++;
+                        }
+                        else
+                        {
+                            nRefOrInParameters++;
+                        }
+                        break;
+                    case RefKind.In:
+                        nRefOrInParameters++;
+                        break;
+                }
+            }
+
+            // Return true if at least one ref struct is returned and
+            // there is at least one distinct ref parameter.
+            if (nReturnedRefStructs == 0)
+            {
+                return nRefParameterRefStructs > 0 && nRefParameterRefStructs + nRefOrInParameters > 1;
+            }
+            return nRefParameterRefStructs + nRefOrInParameters > 0;
+        }
+
+        /// <summary>
         /// We can usually lock on the syntax reference of this method, but it turns
         /// out that some synthesized methods (e.g. field-like event accessors) also
         /// need to do method checks.  This property allows such methods to supply
@@ -331,6 +402,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         try
                         {
                             MethodChecks(diagnostics);
+                            if (WarnMayCaptureRefField())
+                            {
+                                diagnostics.Add(ErrorCode.WRN_MayCaptureRefField, Locations[0], this);
+                            }
                             AddDeclarationDiagnostics(diagnostics);
                         }
                         finally

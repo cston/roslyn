@@ -1627,6 +1627,16 @@
         <target state="translated">Le nom de type contient uniquement des caractères ascii en minuscules. De tels noms peuvent devenir réservés pour la langue.</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField">
+        <source>Method '{0}' may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method '{0}' may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_MayCaptureRefField_Title">
+        <source>Method may capture a ref parameter in a ref struct field.</source>
+        <target state="new">Method may capture a ref parameter in a ref struct field.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_MethGrpToNonDel">
         <source>Converting method group '{0}' to non-delegate type '{1}'. Did you intend to invoke the method?</source>
         <target state="translated">Impossible de convertir le groupe de méthodes '{0}' en type non-délégué '{1}'. Souhaitiez-vous appeler la méthode?</target>

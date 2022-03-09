@@ -494,6 +494,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ErrorCode.WRN_InterpolatedStringHandlerArgumentAttributeIgnoredOnLambdaParameters:
                 case ErrorCode.WRN_CompileTimeCheckedOverflow:
                 case ErrorCode.WRN_MethGrpToNonDel:
+                case ErrorCode.WRN_MayCaptureRefField:
                     return 1;
                 default:
                     return 0;

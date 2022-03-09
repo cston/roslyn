@@ -282,6 +282,7 @@
                 case ErrorCode.WRN_LowerCaseTypeName:
                 case ErrorCode.WRN_NullCheckedHasDefaultNull:
                 case ErrorCode.WRN_NullCheckingOnNullableType:
+                case ErrorCode.WRN_MayCaptureRefField:
                     return true;
                 default:
                     return false;
