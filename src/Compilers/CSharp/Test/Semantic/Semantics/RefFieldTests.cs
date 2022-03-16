@@ -144,56 +144,35 @@ class C
 }
 struct S
 {
-    R<T> F0<T>() => throw null; // 1
-    R<T> F1<T>(T t) => throw null; // 2
-    R<T> F2<T>(ref T t) => throw null; // 3
-    R<T> F3<T>(in T t) => throw null; // 4
-    R<T> F4<T>(out T t) => throw null; // 5
+    R<T> F0<T>() => throw null;
+    R<T> F1<T>(T t) => throw null;
+    R<T> F2<T>(ref T t) => throw null; // 1
+    R<T> F3<T>(in T t) => throw null; // 2
+    R<T> F4<T>(out T t) => throw null;
     void F5() { }
     void F6<T>(R<T> r) { }
-    void F7<T>(ref R<T> r) { } // 6
+    void F7<T>(ref R<T> r) { }
     void F8<T>(in R<T> r) { }
-    void F9<T>(out R<T> r) { r = default; } // 7
-    void F10<T>(out R<T> r, T t) { r = default; } // 8
-    void F11<T>(out R<T> r, ref T t) { r = default; } // 9
-    void F12<T>(out R<T> r, in T t) { r = default; } // 10
-    void F13<T>(out R<T> r, out T t) { r = default; t = default; } // 11
+    void F9<T>(out R<T> r) { r = default; }
+    void F10<T>(out R<T> r, T t) { r = default; }
+    void F11<T>(out R<T> r, ref T t) { r = default; } // 3
+    void F12<T>(out R<T> r, in T t) { r = default; } // 4
+    void F13<T>(out R<T> r, out T t) { r = default; t = default; }
 }";
             var comp = CreateCompilation(source);
             comp.VerifyDiagnostics(
-                // (8,10): warning CS9060: Method 'S.F0<T>()' may capture a ref parameter in a ref struct field.
-                //     R<T> F0<T>() => throw null; // 1
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F0").WithArguments("S.F0<T>()").WithLocation(8, 10),
-                // (9,10): warning CS9060: Method 'S.F1<T>(T)' may capture a ref parameter in a ref struct field.
-                //     R<T> F1<T>(T t) => throw null; // 2
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F1").WithArguments("S.F1<T>(T)").WithLocation(9, 10),
                 // (10,10): warning CS9060: Method 'S.F2<T>(ref T)' may capture a ref parameter in a ref struct field.
-                //     R<T> F2<T>(ref T t) => throw null; // 3
+                //     R<T> F2<T>(ref T t) => throw null; // 1
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F2").WithArguments("S.F2<T>(ref T)").WithLocation(10, 10),
                 // (11,10): warning CS9060: Method 'S.F3<T>(in T)' may capture a ref parameter in a ref struct field.
-                //     R<T> F3<T>(in T t) => throw null; // 4
+                //     R<T> F3<T>(in T t) => throw null; // 2
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F3").WithArguments("S.F3<T>(in T)").WithLocation(11, 10),
-                // (12,10): warning CS9060: Method 'S.F4<T>(out T)' may capture a ref parameter in a ref struct field.
-                //     R<T> F4<T>(out T t) => throw null; // 5
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F4").WithArguments("S.F4<T>(out T)").WithLocation(12, 10),
-                // (15,10): warning CS9060: Method 'S.F7<T>(ref R<T>)' may capture a ref parameter in a ref struct field.
-                //     void F7<T>(ref R<T> r) { } // 6
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F7").WithArguments("S.F7<T>(ref R<T>)").WithLocation(15, 10),
-                // (17,10): warning CS9060: Method 'S.F9<T>(out R<T>)' may capture a ref parameter in a ref struct field.
-                //     void F9<T>(out R<T> r) { r = default; } // 7
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F9").WithArguments("S.F9<T>(out R<T>)").WithLocation(17, 10),
-                // (18,10): warning CS9060: Method 'S.F10<T>(out R<T>, T)' may capture a ref parameter in a ref struct field.
-                //     void F10<T>(out R<T> r, T t) { r = default; } // 8
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F10").WithArguments("S.F10<T>(out R<T>, T)").WithLocation(18, 10),
                 // (19,10): warning CS9060: Method 'S.F11<T>(out R<T>, ref T)' may capture a ref parameter in a ref struct field.
-                //     void F11<T>(out R<T> r, ref T t) { r = default; } // 9
+                //     void F11<T>(out R<T> r, ref T t) { r = default; } // 3
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F11").WithArguments("S.F11<T>(out R<T>, ref T)").WithLocation(19, 10),
                 // (20,10): warning CS9060: Method 'S.F12<T>(out R<T>, in T)' may capture a ref parameter in a ref struct field.
-                //     void F12<T>(out R<T> r, in T t) { r = default; } // 10
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F12").WithArguments("S.F12<T>(out R<T>, in T)").WithLocation(20, 10),
-                // (21,10): warning CS9060: Method 'S.F13<T>(out R<T>, out T)' may capture a ref parameter in a ref struct field.
-                //     void F13<T>(out R<T> r, out T t) { r = default; t = default; } // 11
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F13").WithArguments("S.F13<T>(out R<T>, out T)").WithLocation(21, 10));
+                //     void F12<T>(out R<T> r, in T t) { r = default; } // 4
+                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F12").WithArguments("S.F12<T>(out R<T>, in T)").WithLocation(20, 10));
         }
 
         [Fact]
@@ -207,59 +186,35 @@ struct S
 }
 ref struct R1
 {
-    R0<T> F0<T>() => throw null; // 1
-    R0<T> F1<T>(T t) => throw null; // 2
-    R0<T> F2<T>(ref T t) => throw null; // 3
-    R0<T> F3<T>(in T t) => throw null; // 4
-    R0<T> F4<T>(out T t) => throw null; // 5
+    R0<T> F0<T>() => throw null;
+    R0<T> F1<T>(T t) => throw null;
+    R0<T> F2<T>(ref T t) => throw null; // 1
+    R0<T> F3<T>(in T t) => throw null; // 2
+    R0<T> F4<T>(out T t) => throw null;
     void F5() { }
     void F6<T>(R0<T> r) { }
-    void F7<T>(ref R0<T> r) { } // 6
+    void F7<T>(ref R0<T> r) { }
     void F8<T>(in R0<T> r) { }
-    void F9<T>(out R0<T> r) { r = default; } // 7
-    void F10<T>(out R0<T> r, T t) { r = default; } // 8
-    void F11<T>(out R0<T> r, ref T t) { r = default; } // 9
-    void F12<T>(out R0<T> r, in T t) { r = default; } // 10
-    void F13<T>(out R0<T> r, out T t) { r = default; t = default; } // 11
+    void F9<T>(out R0<T> r) { r = default; }
+    void F10<T>(out R0<T> r, T t) { r = default; }
+    void F11<T>(out R0<T> r, ref T t) { r = default; } // 3
+    void F12<T>(out R0<T> r, in T t) { r = default; } // 4
+    void F13<T>(out R0<T> r, out T t) { r = default; t = default; }
 }";
             var comp = CreateCompilation(source);
             comp.VerifyDiagnostics(
-                // (8,11): warning CS9060: Method 'R1.F0<T>()' may capture a ref parameter in a ref struct field.
-                //     R0<T> F0<T>() => throw null; // 1
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F0").WithArguments("R1.F0<T>()").WithLocation(8, 11),
-                // (9,11): warning CS9060: Method 'R1.F1<T>(T)' may capture a ref parameter in a ref struct field.
-                //     R0<T> F1<T>(T t) => throw null; // 2
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F1").WithArguments("R1.F1<T>(T)").WithLocation(9, 11),
                 // (10,11): warning CS9060: Method 'R1.F2<T>(ref T)' may capture a ref parameter in a ref struct field.
-                //     R0<T> F2<T>(ref T t) => throw null; // 3
+                //     R0<T> F2<T>(ref T t) => throw null; // 1
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F2").WithArguments("R1.F2<T>(ref T)").WithLocation(10, 11),
                 // (11,11): warning CS9060: Method 'R1.F3<T>(in T)' may capture a ref parameter in a ref struct field.
-                //     R0<T> F3<T>(in T t) => throw null; // 4
+                //     R0<T> F3<T>(in T t) => throw null; // 2
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F3").WithArguments("R1.F3<T>(in T)").WithLocation(11, 11),
-                // (12,11): warning CS9060: Method 'R1.F4<T>(out T)' may capture a ref parameter in a ref struct field.
-                //     R0<T> F4<T>(out T t) => throw null; // 5
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F4").WithArguments("R1.F4<T>(out T)").WithLocation(12, 11),
-                // (15,10): warning CS9060: Method 'R1.F7<T>(ref R0<T>)' may capture a ref parameter in a ref struct field.
-                //     void F7<T>(ref R0<T> r) { } // 6
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F7").WithArguments("R1.F7<T>(ref R0<T>)").WithLocation(15, 10),
-                // (16,10): warning CS9060: Method 'R1.F8<T>(in R0<T>)' may capture a ref parameter in a ref struct field.
-                //     void F8<T>(in R0<T> r) { }
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F8").WithArguments("R1.F8<T>(in R0<T>)").WithLocation(16, 10),
-                // (17,10): warning CS9060: Method 'R1.F9<T>(out R0<T>)' may capture a ref parameter in a ref struct field.
-                //     void F9<T>(out R0<T> r) { r = default; } // 7
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F9").WithArguments("R1.F9<T>(out R0<T>)").WithLocation(17, 10),
-                // (18,10): warning CS9060: Method 'R1.F10<T>(out R0<T>, T)' may capture a ref parameter in a ref struct field.
-                //     void F10<T>(out R0<T> r, T t) { r = default; } // 8
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F10").WithArguments("R1.F10<T>(out R0<T>, T)").WithLocation(18, 10),
                 // (19,10): warning CS9060: Method 'R1.F11<T>(out R0<T>, ref T)' may capture a ref parameter in a ref struct field.
-                //     void F11<T>(out R0<T> r, ref T t) { r = default; } // 9
+                //     void F11<T>(out R0<T> r, ref T t) { r = default; } // 3
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F11").WithArguments("R1.F11<T>(out R0<T>, ref T)").WithLocation(19, 10),
                 // (20,10): warning CS9060: Method 'R1.F12<T>(out R0<T>, in T)' may capture a ref parameter in a ref struct field.
-                //     void F12<T>(out R0<T> r, in T t) { r = default; } // 10
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F12").WithArguments("R1.F12<T>(out R0<T>, in T)").WithLocation(20, 10),
-                // (21,10): warning CS9060: Method 'R1.F13<T>(out R0<T>, out T)' may capture a ref parameter in a ref struct field.
-                //     void F13<T>(out R0<T> r, out T t) { r = default; t = default; } // 11
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F13").WithArguments("R1.F13<T>(out R0<T>, out T)").WithLocation(21, 10));
+                //     void F12<T>(out R0<T> r, in T t) { r = default; } // 4
+                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "F12").WithArguments("R1.F12<T>(out R0<T>, in T)").WithLocation(20, 10));
         }
 
         [Fact]
@@ -274,9 +229,9 @@ ref struct R1
     S(in S<object> o) { }
     S(out S<string> s) { s = default; }
     S(R<byte> r) { }
-    S(ref R<int> r) { } // 1
+    S(ref R<int> r) { }
     S(in R<object> r) { }
-    S(out R<string> r) { r = default; } // 2
+    S(out R<string> r) { r = default; }
 }
 ref struct R<T>
 {
@@ -292,12 +247,6 @@ ref struct R<T>
 }";
             var comp = CreateCompilation(source);
             comp.VerifyDiagnostics(
-                // (9,5): warning CS9060: Method 'S<T>.S(ref R<int>)' may capture a ref parameter in a ref struct field.
-                //     S(ref R<int> r) { } // 1
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "S").WithArguments("S<T>.S(ref R<int>)").WithLocation(9, 5),
-                // (11,5): warning CS9060: Method 'S<T>.S(out R<string>)' may capture a ref parameter in a ref struct field.
-                //     S(out R<string> r) { r = default; } // 2
-                Diagnostic(ErrorCode.WRN_MayCaptureRefField, "S").WithArguments("S<T>.S(out R<string>)").WithLocation(11, 5),
                 // (17,5): warning CS9060: Method 'R<T>.R(ref S<int>)' may capture a ref parameter in a ref struct field.
                 //     R(ref S<int> i) { } // 3
                 Diagnostic(ErrorCode.WRN_MayCaptureRefField, "R").WithArguments("R<T>.R(ref S<int>)").WithLocation(17, 5),

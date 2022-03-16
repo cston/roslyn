@@ -312,20 +312,15 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
 
             int nReturnedRefStructs = 0; // return values or out parameters that are ref structs
-            int nRefParameterRefStructs = 0; // ref parameters that are ref structs
-            int nRefOrInParameters = 0; // ref or in parameters
+            int nUnscopedRefParameterRefStructs = 0; // ref parameters that are ref structs
+            int nUnscopedRefOrInParameters = 0; // ref or in parameters
 
-            // Consider 'this' if an instance method.
-            if (!IsStatic)
+            // Consider 'this' as an unscoped ref struct parameter if the method is a ref struct
+            // constructor. (For regular ref struct instance methods, 'this' is considered scoped.)
+            if (MethodKind == MethodKind.Constructor &&
+                ContainingType.IsRefLikeType)
             {
-                if (ContainingType.IsRefLikeType)
-                {
-                    nRefParameterRefStructs++;
-                }
-                else if (ContainingType.IsStructType())
-                {
-                    nRefOrInParameters++;
-                }
+                nUnscopedRefParameterRefStructs++;
             }
 
             // Consider the return value if a ref struct returned by value.
@@ -348,15 +343,15 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     case RefKind.Ref:
                         if (parameter.Type.IsRefLikeType)
                         {
-                            nRefParameterRefStructs++;
+                            nUnscopedRefParameterRefStructs++;
                         }
                         else
                         {
-                            nRefOrInParameters++;
+                            nUnscopedRefOrInParameters++;
                         }
                         break;
                     case RefKind.In:
-                        nRefOrInParameters++;
+                        nUnscopedRefOrInParameters++;
                         break;
                 }
             }
@@ -365,9 +360,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             // there is at least one distinct ref parameter.
             if (nReturnedRefStructs == 0)
             {
-                return nRefParameterRefStructs > 0 && nRefParameterRefStructs + nRefOrInParameters > 1;
+                return nUnscopedRefParameterRefStructs > 0 && nUnscopedRefParameterRefStructs + nUnscopedRefOrInParameters > 1;
             }
-            return nRefParameterRefStructs + nRefOrInParameters > 0;
+            return nUnscopedRefParameterRefStructs + nUnscopedRefOrInParameters > 0;
         }
 
         /// <summary>
