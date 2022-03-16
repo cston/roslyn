@@ -322,7 +322,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 {
                     nRefParameterRefStructs++;
                 }
-                else if (ContainingType.IsStructType()) // PROTOTYPE: What not include reference types?
+                else if (ContainingType.IsStructType())
                 {
                     nRefOrInParameters++;
                 }
