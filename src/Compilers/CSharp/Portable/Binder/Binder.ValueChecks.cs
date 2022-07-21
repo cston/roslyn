@@ -1435,7 +1435,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             bool useRefEscape = effectiveRefKind switch
             {
                 RefKind.None or RefKind.Out => false,
-                RefKind.Ref or RefKind.In => isRefEscape || hasRefStructType(symbol),
+                RefKind.Ref or RefKind.In => isRefEscape || HasRefStructType(symbol),
                 _ => throw ExceptionUtilities.UnexpectedValue(effectiveRefKind),
             };
 
@@ -1450,19 +1450,94 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             return useRefEscape;
+        }
 
-            static bool hasRefStructType(Symbol symbol)
+        private static bool HasRefStructType(Symbol symbol)
+        {
+            switch (symbol)
             {
-                switch (symbol)
+                case MethodSymbol method:
+                    return method.MethodKind == MethodKind.Constructor ?
+                        method.ContainingType.IsRefLikeType :
+                        method.ReturnType.IsRefLikeType;
+                case PropertySymbol property:
+                    return property.Type.IsRefLikeType;
+                default:
+                    return false;
+            }
+        }
+
+        private static void GetInvocationArgumentsAndParameters(
+            Symbol symbol,
+            BoundExpression? receiver,
+            ImmutableArray<ParameterSymbol> parameters,
+            ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
+            ImmutableArray<int> argsToParamsOpt,
+            ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)> argsAndParams)
+        {
+            if (receiver is { })
+            {
+                var containingType = symbol.ContainingType;
+                var refKind = containingType.IsStructType() ?
+                    (IsReceiverRefReadOnly(symbol) ? RefKind.RefReadOnly : RefKind.Ref) :
+                    RefKind.None;
+                var method = symbol switch
                 {
-                    case MethodSymbol method:
-                        return method.MethodKind == MethodKind.Constructor ?
-                            method.ContainingType.IsRefLikeType :
-                            method.ReturnType.IsRefLikeType;
-                    case PropertySymbol property:
-                        return property.Type.IsRefLikeType;
-                    default:
-                        return false;
+                    MethodSymbol m => m,
+                    PropertySymbol p => p.GetMethod ?? p.SetMethod,
+                    _ => throw ExceptionUtilities.UnexpectedValue(symbol)
+                };
+                argsAndParams.Add((method?.ThisParameter, receiver, refKind));
+            }
+
+            if (!argsOpt.IsDefault)
+            {
+                for (int argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                {
+                    var argument = argsOpt[argIndex];
+                    if (argument.Kind == BoundKind.ArgListOperator)
+                    {
+                        Debug.Assert(argIndex == argsOpt.Length - 1);
+                        // unwrap varargs and process as more arguments
+                        var argList = (BoundArgListOperator)argument;
+                        getArgList(argList.Arguments, argList.ArgumentRefKindsOpt, argsAndParams);
+                        break;
+                    }
+
+                    var parameter = argIndex < parameters.Length ?
+                        parameters[argsToParamsOpt.IsDefault ? argIndex : argsToParamsOpt[argIndex]] :
+                        null;
+
+                    var refKind = parameter?.RefKind ?? RefKind.None;
+                    if (!argRefKindsOpt.IsDefault)
+                    {
+                        refKind = argRefKindsOpt[argIndex];
+                        if (refKind == RefKind.None &&
+                            parameter?.RefKind == RefKind.In)
+                        {
+                            refKind = RefKind.In;
+                        }
+                    }
+
+                    argsAndParams.Add((parameter, argument, refKind));
+                }
+            }
+
+            static void getArgList(
+                ImmutableArray<BoundExpression> argsOpt,
+                ImmutableArray<RefKind> argRefKindsOpt,
+                ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)> argsAndParams)
+            {
+                for (int argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                {
+                    var argument = argsOpt[argIndex];
+                    // PROTOTYPE: GetInvocationEscapeScope() and CheckInvocationEscape() ignored
+                    // argList.ArgumentRefKindsOpt previously, while CheckInvocationArgMixing() used
+                    // the ref kinds. Is there a test that demonstrates the difference for escape scope?
+                    // ref kinds of varargs are not interesting here.
+                    var refKind = argRefKindsOpt.IsDefault ? RefKind.None : argRefKindsOpt[argIndex];
+                    argsAndParams.Add((null, argument, refKind));
                 }
             }
         }
@@ -1475,7 +1550,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// NOTE: we need scopeOfTheContainingExpression as some expressions such as optional <c>in</c> parameters or <c>ref dynamic</c> behave as 
         ///       local variables declared at the scope of the invocation.
         /// </summary>
-        internal uint GetInvocationEscapeScope(
+        private uint GetInvocationEscapeScope(
             Symbol symbol,
             BoundExpression? receiver,
             ImmutableArray<ParameterSymbol> parameters,
@@ -1489,6 +1564,11 @@ namespace Microsoft.CodeAnalysis.CSharp
 #if DEBUG
             Debug.Assert(AllParametersConsideredInEscapeAnalysisHaveArguments(argsOpt, parameters, argsToParamsOpt));
 #endif
+
+            if (UseUpdatedEscapeRules)
+            {
+                return GetInvocationEscapeWithUpdatedRules(symbol, receiver, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, scopeOfTheContainingExpression, isRefEscape);
+            }
 
             // SPEC: (also applies to the CheckInvocationEscape counterpart)
             //
@@ -1511,30 +1591,13 @@ namespace Microsoft.CodeAnalysis.CSharp
             //by default it is safe to escape
             uint escapeScope = Binder.ExternalScope;
 
-            if (!argsOpt.IsDefault)
+            var argsAndParams = ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)>.GetInstance();
+            GetInvocationArgumentsAndParameters(symbol, receiver: null, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, argsAndParams);
+
+            try
             {
-moreArguments:
-                for (var argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                foreach (var (parameter, argument, effectiveRefKind) in argsAndParams)
                 {
-                    var argument = argsOpt[argIndex];
-                    if (argument.Kind == BoundKind.ArgListOperator)
-                    {
-                        Debug.Assert(argIndex == argsOpt.Length - 1, "vararg must be the last");
-                        var argList = (BoundArgListOperator)argument;
-
-                        // unwrap varargs and process as more arguments
-                        argsOpt = argList.Arguments;
-                        // ref kinds of varargs are not interesting here. 
-                        // __refvalue is not ref-returnable, so ref varargs can't come back from a call
-                        argRefKindsOpt = default;
-                        parameters = ImmutableArray<ParameterSymbol>.Empty;
-                        argsToParamsOpt = default;
-
-                        goto moreArguments;
-                    }
-
-                    RefKind effectiveRefKind = GetEffectiveRefKind(argIndex, argRefKindsOpt, parameters, argsToParamsOpt, out DeclarationScope scope);
-
                     // ref escape scope is the narrowest of 
                     // - ref escape of all byref arguments
                     // - val escape of all byval arguments  (ref-like values can be unwrapped into refs, so treat val escape of values as possible ref escape of the result)
@@ -1542,7 +1605,8 @@ moreArguments:
                     // val escape scope is the narrowest of 
                     // - val escape of all byval arguments  (refs cannot be wrapped into values, so their ref escape is irrelevant, only use val escapes)
 
-                    bool? useRefEscape = UseRefEscapeOfInvocationArgument(symbol, effectiveRefKind, isRefEscape, scope);
+                    DeclarationScope scope = parameter?.Scope ?? DeclarationScope.Unscoped;
+                    bool? useRefEscape = UseRefEscapeOfInvocationArgument(symbol, effectiveRefKind, isRefEscape, scope); // PROTOTYPE: Revert this to C#10. At the very least, remove scope.
                     if (useRefEscape == null)
                     {
                         continue;
@@ -1561,12 +1625,50 @@ moreArguments:
                     }
                 }
             }
+            finally
+            {
+                argsAndParams.Free();
+            }
 
             // check receiver if ref-like
             if (receiver?.Type?.IsRefLikeType == true)
             {
                 escapeScope = Math.Max(escapeScope, GetValEscape(receiver, scopeOfTheContainingExpression));
             }
+
+            return escapeScope;
+        }
+
+        private uint GetInvocationEscapeWithUpdatedRules(
+            Symbol symbol,
+            BoundExpression? receiver,
+            ImmutableArray<ParameterSymbol> parameters,
+            ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
+            ImmutableArray<int> argsToParamsOpt,
+            uint scopeOfTheContainingExpression,
+            bool isRefEscape)
+        {
+            //by default it is safe to escape
+            uint escapeScope = Binder.ExternalScope;
+
+            VisitInvocationWithUpdatedRules(
+                symbol,
+                receiver,
+                parameters,
+                argsOpt,
+                argRefKindsOpt,
+                argsToParamsOpt,
+                isRefEscape,
+                (Symbol symbol, ParameterSymbol? parameter, BoundExpression argument, bool isRefEscape) =>
+                {
+                    uint argEscape = isRefEscape ?
+                        GetRefEscape(argument, scopeOfTheContainingExpression) :
+                        GetValEscape(argument, scopeOfTheContainingExpression);
+
+                    escapeScope = Math.Max(escapeScope, argEscape);
+                    return escapeScope < scopeOfTheContainingExpression;
+                });
 
             return escapeScope;
         }
@@ -1598,6 +1700,11 @@ moreArguments:
             Debug.Assert(AllParametersConsideredInEscapeAnalysisHaveArguments(argsOpt, parameters, argsToParamsOpt));
 #endif
 
+            if (UseUpdatedEscapeRules)
+            {
+                return CheckInvocationEscapeWithUpdatedRules(syntax, symbol, receiver, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, checkingReceiver, escapeFrom, escapeTo, diagnostics, isRefEscape);
+            }
+
             // SPEC: 
             //            In a method invocation, the following constraints apply:
             //•	If there is a ref or out argument to a ref struct type (including the receiver), with safe-to-escape E1, then
@@ -1610,30 +1717,13 @@ moreArguments:
                 receiver = null;
             }
 
-            if (!argsOpt.IsDefault)
+            var argsAndParams = ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)>.GetInstance();
+            GetInvocationArgumentsAndParameters(symbol, receiver: null, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, argsAndParams);
+
+            try
             {
-moreArguments:
-                for (var argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                foreach (var (parameter, argument, effectiveRefKind) in argsAndParams)
                 {
-                    var argument = argsOpt[argIndex];
-                    if (argument.Kind == BoundKind.ArgListOperator)
-                    {
-                        Debug.Assert(argIndex == argsOpt.Length - 1, "vararg must be the last");
-                        var argList = (BoundArgListOperator)argument;
-
-                        // unwrap varargs and process as more arguments
-                        argsOpt = argList.Arguments;
-                        // ref kinds of varargs are not interesting here. 
-                        // __refvalue is not ref-returnable, so ref varargs can't come back from a call
-                        argRefKindsOpt = default;
-                        parameters = ImmutableArray<ParameterSymbol>.Empty;
-                        argsToParamsOpt = default;
-
-                        goto moreArguments;
-                    }
-
-                    RefKind effectiveRefKind = GetEffectiveRefKind(argIndex, argRefKindsOpt, parameters, argsToParamsOpt, out DeclarationScope scope);
-
                     // ref escape scope is the narrowest of 
                     // - ref escape of all byref arguments
                     // - val escape of all byval arguments  (ref-like values can be unwrapped into refs, so treat val escape of values as possible ref escape of the result)
@@ -1641,7 +1731,8 @@ moreArguments:
                     // val escape scope is the narrowest of 
                     // - val escape of all byval arguments  (refs cannot be wrapped into values, so their ref escape is irrelevant, only use val escapes)
 
-                    bool? useRefEscape = UseRefEscapeOfInvocationArgument(symbol, effectiveRefKind, isRefEscape, scope);
+                    DeclarationScope scope = parameter?.Scope ?? DeclarationScope.Unscoped;
+                    bool? useRefEscape = UseRefEscapeOfInvocationArgument(symbol, effectiveRefKind, isRefEscape, scope); // PROTOTYPE: Revert this to C#10. At the very least, remove scope.
                     if (useRefEscape == null)
                     {
                         continue;
@@ -1653,28 +1744,14 @@ moreArguments:
 
                     if (!valid)
                     {
-                        ErrorCode errorCode = GetStandardCallEscapeError(checkingReceiver);
-
-                        string parameterName;
-                        if (parameters.Length > 0)
-                        {
-                            var paramIndex = argsToParamsOpt.IsDefault ? argIndex : argsToParamsOpt[argIndex];
-                            parameterName = parameters[paramIndex].Name;
-
-                            if (string.IsNullOrEmpty(parameterName))
-                            {
-                                parameterName = paramIndex.ToString();
-                            }
-                        }
-                        else
-                        {
-                            parameterName = "__arglist";
-                        }
-
-                        Error(diagnostics, errorCode, syntax, symbol, parameterName);
+                        ReportInvocationEscapeError(syntax, symbol, parameter, checkingReceiver, diagnostics);
                         return false;
                     }
                 }
+            }
+            finally
+            {
+                argsAndParams.Free();
             }
 
             // check receiver if ref-like
@@ -1684,6 +1761,172 @@ moreArguments:
             }
 
             return true;
+        }
+
+        private bool CheckInvocationEscapeWithUpdatedRules(
+            SyntaxNode syntax,
+            Symbol symbol,
+            BoundExpression? receiver,
+            ImmutableArray<ParameterSymbol> parameters,
+            ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
+            ImmutableArray<int> argsToParamsOpt,
+            bool checkingReceiver,
+            uint escapeFrom,
+            uint escapeTo,
+            BindingDiagnosticBag diagnostics,
+            bool isRefEscape)
+        {
+            bool result = true;
+
+            VisitInvocationWithUpdatedRules(
+                symbol,
+                receiver,
+                parameters,
+                argsOpt,
+                argRefKindsOpt,
+                argsToParamsOpt,
+                isRefEscape,
+                (Symbol symbol, ParameterSymbol? parameter, BoundExpression argument, bool isRefEscape) =>
+                {
+                    bool valid = isRefEscape ?
+                        CheckRefEscape(argument.Syntax, argument, escapeFrom, escapeTo, false, diagnostics) :
+                        CheckValEscape(argument.Syntax, argument, escapeFrom, escapeTo, false, diagnostics);
+
+                    if (!valid)
+                    {
+                        ReportInvocationEscapeError(syntax, symbol, parameter, checkingReceiver, diagnostics);
+                        result = false;
+                    }
+                    return valid;
+                });
+
+            return result;
+        }
+
+        private delegate bool VisitInvocationArgumentWithUpdatedRules(Symbol symbol, ParameterSymbol? parameter, BoundExpression argument, bool isRefEscape);
+
+        private void VisitInvocationWithUpdatedRules(
+            Symbol symbol,
+            BoundExpression? receiver,
+            ImmutableArray<ParameterSymbol> parameters,
+            ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
+            ImmutableArray<int> argsToParamsOpt,
+            bool isRefEscape,
+            VisitInvocationArgumentWithUpdatedRules visitArg)
+        {
+            // https://github.com/dotnet/csharplang/blob/main/proposals/low-level-struct-improvements.md#rules-method-invocation
+            //
+            // For a given argument `a` that is passed to parameter `p`:
+            // 1. If `p` is `scoped ref` then `a` does not contribute *ref-safe-to-escape* when considering arguments.
+            // 2. If `p` is `scoped` then `a` does not contribute *safe-to-escape* when considering arguments. 
+            //
+            // A value resulting from a method invocation `e1.M(e2, ...)` is *safe-to-escape* from the smallest of the following scopes:
+            // 1. The *calling method*
+            // 2. The *safe-to-escape* contributed by all argument expressions
+            // 3. When the return is a `ref struct` then *ref-safe-to-escape* contributed by all `ref` arguments
+            //
+            // A value resulting from a method invocation `ref e1.M(e2, ...)` is *ref-safe-to-escape* the smallest of the following scopes:
+            // 1. The *safe-to-escape* of the rvalue of `e1.M(e2, ...)`
+            // 2. The *ref-safe-to-escape* contributed by all `ref` arguments
+
+            if (!symbol.RequiresInstanceReceiver())
+            {
+                // ignore receiver when symbol is static
+                receiver = null;
+            }
+
+            var argsAndParams = ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)>.GetInstance();
+            GetInvocationArgumentsAndParameters(symbol, receiver, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, argsAndParams);
+
+            try
+            {
+                // The *safe-to-escape* contributed by all argument expressions
+                foreach (var (parameter, argument, _) in argsAndParams)
+                {
+                    if (parameter is { })
+                    {
+                        if (isRefEscape)
+                        {
+                            // 1. If `p` is `scoped ref` then `a` does not contribute *ref-safe-to-escape* when considering arguments.
+                            if (parameter.Scope == DeclarationScope.RefScoped ||
+                                parameter.Scope == DeclarationScope.ValueScoped) // PROTOTYPE: Remove the ValueScoped case when 'ref scoped' support has been removed.
+                            {
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            // 2. If `p` is `scoped` then `a` does not contribute *safe-to-escape* when considering arguments.
+                            if (parameter.Scope == DeclarationScope.ValueScoped)
+                            {
+                                continue;
+                            }
+                        }
+                    }
+
+                    if (!visitArg(symbol, parameter, argument, isRefEscape: false))
+                    {
+                        return;
+                    }
+                }
+
+                // The *ref-safe-to-escape* contributed by all `ref` arguments
+                if (isRefEscape || HasRefStructType(symbol))
+                {
+                    foreach (var (parameter, argument, effectiveRefKind) in argsAndParams)
+                    {
+                        if (effectiveRefKind == RefKind.None)
+                        {
+                            continue;
+                        }
+
+                        // 1. If `p` is `scoped ref` then `a` does not contribute *ref-safe-to-escape* when considering arguments.
+                        if (parameter is { } &&
+                            (parameter.Scope == DeclarationScope.RefScoped ||
+                            parameter.Scope == DeclarationScope.ValueScoped)) // PROTOTYPE: Remove the ValueScoped case when 'ref scoped' support has been removed.
+                        {
+                            continue;
+                        }
+
+                        if (!visitArg(symbol, parameter, argument, isRefEscape: true))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                argsAndParams.Free();
+            }
+        }
+
+        private static string GetInvocationParameterName(ParameterSymbol? parameter)
+        {
+            if (parameter is null)
+            {
+                return "__arglist";
+            }
+            string parameterName = parameter.Name;
+            if (string.IsNullOrEmpty(parameterName))
+            {
+                parameterName = parameter.Ordinal.ToString();
+            }
+            return parameterName;
+        }
+
+        private static void ReportInvocationEscapeError(
+            SyntaxNode syntax,
+            Symbol symbol,
+            ParameterSymbol? parameter,
+            bool checkingReceiver,
+            BindingDiagnosticBag diagnostics)
+        {
+            ErrorCode errorCode = GetStandardCallEscapeError(checkingReceiver);
+            string parameterName = GetInvocationParameterName(parameter);
+            Error(diagnostics, errorCode, syntax, symbol, parameterName);
         }
 
         /// <summary>
@@ -1696,10 +1939,16 @@ moreArguments:
             BoundExpression? receiverOpt,
             ImmutableArray<ParameterSymbol> parameters,
             ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
             ImmutableArray<int> argsToParamsOpt,
             uint scopeOfTheContainingExpression,
             BindingDiagnosticBag diagnostics)
         {
+            if (UseUpdatedEscapeRules)
+            {
+                return CheckInvocationArgMixingWithUpdatedRules(syntax, symbol, receiverOpt, parameters, argsOpt, argRefKindsOpt, argsToParamsOpt, scopeOfTheContainingExpression, diagnostics);
+            }
+
             // SPEC:
             // In a method invocation, the following constraints apply:
             // - If there is a ref or out argument of a ref struct type (including the receiver), with safe-to-escape E1, then
@@ -1716,88 +1965,45 @@ moreArguments:
 
             // collect all writeable ref-like arguments, including receiver
             var receiverType = receiverOpt?.Type;
-            if (receiverType?.IsRefLikeType == true && !isReceiverRefReadOnly(symbol))
+            if (receiverType?.IsRefLikeType == true && !IsReceiverRefReadOnly(symbol))
             {
                 escapeTo = GetValEscape(receiverOpt, scopeOfTheContainingExpression);
             }
 
-            if (!argsOpt.IsDefault)
+            var argsAndParams = ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)>.GetInstance();
+            GetInvocationArgumentsAndParameters(symbol, receiver: null, parameters, argsOpt, argRefKindsOpt: default, argsToParamsOpt, argsAndParams);
+
+            try
             {
-                BoundArgListOperator? argList = null;
-                for (var argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                foreach (var (parameter, argument, refKind) in argsAndParams)
                 {
-                    var argument = argsOpt[argIndex];
-                    if (argument.Kind == BoundKind.ArgListOperator)
+                    if (refKind.IsWritableReference() && argument.Type?.IsRefLikeType == true)
                     {
-                        Debug.Assert(argIndex == argsOpt.Length - 1, "vararg must be the last");
-                        argList = (BoundArgListOperator)argument;
-                        break;
+                        escapeTo = Math.Min(escapeTo, GetValEscape(argument, scopeOfTheContainingExpression));
                     }
-
-                    var parameter = getParameter(parameters, argsToParamsOpt, argIndex);
-                    if (!considerParameter(parameter))
-                    {
-                        continue;
-                    }
-
-                    updateEscapeTo(argument, parameter.RefKind, scopeOfTheContainingExpression, ref escapeTo);
                 }
 
-                if (argList != null)
+                if (escapeTo == scopeOfTheContainingExpression)
                 {
-                    var argListArgs = argList.Arguments;
-                    var argListRefKindsOpt = argList.ArgumentRefKindsOpt;
-
-                    for (var argIndex = 0; argIndex < argListArgs.Length; argIndex++)
-                    {
-                        var argument = argListArgs[argIndex];
-                        var refKind = argListRefKindsOpt.IsDefault ? RefKind.None : argListRefKindsOpt[argIndex];
-                        updateEscapeTo(argument, refKind, scopeOfTheContainingExpression, ref escapeTo);
-                    }
+                    // cannot fail. common case.
+                    return true;
                 }
-            }
 
-            if (escapeTo == scopeOfTheContainingExpression)
-            {
-                // cannot fail. common case.
-                return true;
-            }
-
-            if (!argsOpt.IsDefault)
-            {
-moreArguments:
-                for (var argIndex = 0; argIndex < argsOpt.Length; argIndex++)
+                foreach (var (parameter, argument, _) in argsAndParams)
                 {
-                    // check val escape of all arguments
-                    var argument = argsOpt[argIndex];
-                    if (argument.Kind == BoundKind.ArgListOperator)
-                    {
-                        Debug.Assert(argIndex == argsOpt.Length - 1, "vararg must be the last");
-                        var argList = (BoundArgListOperator)argument;
-
-                        // unwrap varargs and process as more arguments
-                        argsOpt = argList.Arguments;
-                        parameters = ImmutableArray<ParameterSymbol>.Empty;
-                        argsToParamsOpt = default;
-
-                        goto moreArguments;
-                    }
-
-                    var parameter = (parameters.Length > 0) ? getParameter(parameters, argsToParamsOpt, argIndex) : null;
-                    if (!considerParameter(parameter))
-                    {
-                        continue;
-                    }
-
                     var valid = CheckValEscape(argument.Syntax, argument, scopeOfTheContainingExpression, escapeTo, false, diagnostics);
 
                     if (!valid)
                     {
-                        string parameterName = parameter is null ? "__arglist" : parameter.Name;
+                        string parameterName = GetInvocationParameterName(parameter);
                         Error(diagnostics, ErrorCode.ERR_CallArgMixing, syntax, symbol, parameterName);
                         return false;
                     }
                 }
+            }
+            finally
+            {
+                argsAndParams.Free();
             }
 
             // check val escape of receiver if ref-like
@@ -1808,47 +2014,110 @@ moreArguments:
             }
 
             return true;
+        }
 
-            static ParameterSymbol getParameter(ImmutableArray<ParameterSymbol> parameters, ImmutableArray<int> argsToParamsOpt, int argIndex)
+        private bool CheckInvocationArgMixingWithUpdatedRules(
+            SyntaxNode syntax,
+            Symbol symbol,
+            BoundExpression? receiverOpt,
+            ImmutableArray<ParameterSymbol> parameters,
+            ImmutableArray<BoundExpression> argsOpt,
+            ImmutableArray<RefKind> argRefKindsOpt,
+            ImmutableArray<int> argsToParamsOpt,
+            uint scopeOfTheContainingExpression,
+            BindingDiagnosticBag diagnostics)
+        {
+            // https://github.com/dotnet/csharplang/blob/main/proposals/low-level-struct-improvements.md#rules-method-invocation
+            //
+            // For any method invocation `e.M(a1, a2, ... aN)`
+            // 1. Calculate the *safe-to-escape* of the method return (for this rule assume it has a `ref struct` return type)
+            // 2. All `ref` or `out` arguments must be assignable by a value with that *safe-to-escape*. This applies even when the `ref` argument matches a `scoped ref` parameter.
+            // PROTOTYPE: Second rule needs to be updated to say `ref` or `out` parameters of ref struct types.
+
+            if (!symbol.RequiresInstanceReceiver())
             {
-                var paramIndex = argsToParamsOpt.IsDefault ? argIndex : argsToParamsOpt[argIndex];
-                return parameters[paramIndex];
+                // ignore receiver when symbol is static
+                receiverOpt = null;
             }
 
-            bool considerParameter(ParameterSymbol? parameter)
-            {
-                if (UseUpdatedEscapeRules)
+            // 1. Calculate the *safe-to-escape* of the method return (for this rule assume it has a `ref struct` return type)
+            uint escapeScope = Binder.ExternalScope;
+            BoundExpression? argToEscape = null;
+            ParameterSymbol? parameterToEscape = null;
+            VisitInvocationWithUpdatedRules(
+                symbol,
+                receiverOpt,
+                parameters,
+                argsOpt,
+                argRefKindsOpt,
+                argsToParamsOpt,
+                isRefEscape: false,
+                (Symbol symbol, ParameterSymbol? parameter, BoundExpression argument, bool isRefEscape) =>
                 {
-                    // SPEC: For a given argument `a` that is passed to parameter `p`:
-                    // SPEC:  1. ...
-                    // SPEC: 2. If `p` is `scoped` or `ref scoped` then `a` does not contribute *safe-to-escape* when considering arguments.
-                    if (parameter?.Scope == DeclarationScope.ValueScoped)
+                    uint argEscape = isRefEscape ?
+                        GetRefEscape(argument, scopeOfTheContainingExpression) :
+                        GetValEscape(argument, scopeOfTheContainingExpression);
+
+                    if (argEscape > escapeScope)
                     {
-                        return false;
+                        escapeScope = argEscape;
+                        argToEscape = argument;
+                        parameterToEscape = parameter;
                     }
-                }
+                    return true;
+                });
+
+            if (argToEscape is null)
+            {
                 return true;
             }
 
-            void updateEscapeTo(BoundExpression argument, RefKind refKind, uint scopeOfTheContainingExpression, ref uint escapeTo)
+            var argsAndParams = ArrayBuilder<(ParameterSymbol? Parameter, BoundExpression Argument, RefKind RefKind)>.GetInstance();
+            GetInvocationArgumentsAndParameters(symbol, receiverOpt, parameters, argsOpt, argRefKindsOpt: default, argsToParamsOpt, argsAndParams);
+
+            try
             {
-                if (refKind.IsWritableReference() && argument.Type?.IsRefLikeType == true)
+                // 2. All `ref` or `out` arguments must be assignable by a value with that *safe-to-escape*. This applies even when the `ref` argument matches a `scoped ref` parameter.
+                foreach (var (parameter, argument, refKind) in argsAndParams)
                 {
-                    escapeTo = Math.Min(escapeTo, GetValEscape(argument, scopeOfTheContainingExpression));
+                    if (!refKind.IsWritableReference() || argument.Type?.IsRefLikeType != true)
+                    {
+                        continue;
+                    }
+
+                    uint escapeTo = GetValEscape(argument, scopeOfTheContainingExpression);
+                    if (!CheckValEscape(argToEscape.Syntax, argToEscape, scopeOfTheContainingExpression, escapeTo, false, diagnostics))
+                    {
+                        // For consistency with C#10 implementation, we don't report ERR_CallArgMixing
+                        // for the receiver. (In both implementations, the call to CheckValEscape() above
+                        // will have reported a specific escape error for the receiver though.)
+                        if ((object)argToEscape != receiverOpt)
+                        {
+                            string parameterName = GetInvocationParameterName(parameterToEscape);
+                            Error(diagnostics, ErrorCode.ERR_CallArgMixing, syntax, symbol, parameterName);
+                        }
+                        return false;
+                    }
                 }
             }
-
-            static bool isReceiverRefReadOnly(Symbol methodOrPropertySymbol) => methodOrPropertySymbol switch
+            finally
             {
-                MethodSymbol m => m.IsEffectivelyReadOnly,
-                // TODO: val escape checks should be skipped for property accesses when
-                // we can determine the only accessors being called are readonly.
-                // For now we are pessimistic and check escape if any accessor is non-readonly.
-                // Tracking in https://github.com/dotnet/roslyn/issues/35606
-                PropertySymbol p => p.GetMethod?.IsEffectivelyReadOnly != false && p.SetMethod?.IsEffectivelyReadOnly != false,
-                _ => throw ExceptionUtilities.UnexpectedValue(methodOrPropertySymbol)
-            };
+                argsAndParams.Free();
+            }
+
+            return true;
         }
+
+        private static bool IsReceiverRefReadOnly(Symbol methodOrPropertySymbol) => methodOrPropertySymbol switch
+        {
+            MethodSymbol m => m.IsEffectivelyReadOnly,
+            // TODO: val escape checks should be skipped for property accesses when
+            // we can determine the only accessors being called are readonly.
+            // For now we are pessimistic and check escape if any accessor is non-readonly.
+            // Tracking in https://github.com/dotnet/roslyn/issues/35606
+            PropertySymbol p => p.GetMethod?.IsEffectivelyReadOnly != false && p.SetMethod?.IsEffectivelyReadOnly != false,
+            _ => throw ExceptionUtilities.UnexpectedValue(methodOrPropertySymbol)
+        };
 
 #if DEBUG
         private static bool AllParametersConsideredInEscapeAnalysisHaveArguments(
@@ -1880,38 +2149,6 @@ moreArguments:
             return true;
         }
 #endif
-
-        /// <summary>
-        /// Gets "effective" ref kind of an argument.
-        /// 
-        /// NOTE: Generally we know if a formal argument is passed as ref/out/in by looking at the call site. 
-        /// However, 'in' may also be passed as an ordinary val argument so we need to take a look at corresponding parameter, if such exists. 
-        /// There are cases like params/vararg, when a corresponding parameter may not exist, then val cannot become 'in'.
-        /// </summary>
-        private static RefKind GetEffectiveRefKind(
-            int argIndex,
-            ImmutableArray<RefKind> argRefKindsOpt,
-            ImmutableArray<ParameterSymbol> parameters,
-            ImmutableArray<int> argsToParamsOpt,
-            out DeclarationScope scope)
-        {
-            int paramIndex = argIndex < parameters.Length ?
-                (argsToParamsOpt.IsDefault ? argIndex : argsToParamsOpt[argIndex]) :
-                -1;
-
-            var effectiveRefKind = argRefKindsOpt.IsDefault ? RefKind.None : argRefKindsOpt[argIndex];
-
-            if ((effectiveRefKind == RefKind.None || effectiveRefKind == RefKind.In) && paramIndex >= 0)
-            {
-                if (parameters[paramIndex].RefKind == RefKind.In)
-                {
-                    effectiveRefKind = RefKind.In;
-                }
-            }
-
-            scope = paramIndex >= 0 ? parameters[paramIndex].Scope : DeclarationScope.Unscoped;
-            return effectiveRefKind;
-        }
 
 #nullable disable
 
