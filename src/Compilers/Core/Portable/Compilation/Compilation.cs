@@ -3417,6 +3417,9 @@ namespace Microsoft.CodeAnalysis
             return _features.TryGetValue(p, out v) ? v : null;
         }
 
+        // PROTOTYPE: Remove feature.
+        internal bool UseRefSafetyVisitor => Feature("UseRefSafetyVisitor") is { };
+
         #endregion
 
         private ConcurrentDictionary<SyntaxTree, SmallConcurrentSetOfInts>? _lazyTreeToUsedImportDirectivesMap;

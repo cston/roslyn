@@ -22,7 +22,7 @@ namespace Microsoft.CodeAnalysis.CSharp
     {
 #nullable enable
 
-        private enum EscapeLevel : uint
+        internal enum EscapeLevel : uint
         {
             CallingMethod = Binder.CallingMethodScope,
             ReturnOnly = Binder.ReturnOnlyScope,
@@ -118,7 +118,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// as it contributes to escape analysis which means arguments can show up multiple times. For
         /// example `ref x` will be represented as both a val and ref escape.
         /// </summary>
-        private readonly struct EscapeValue
+        internal readonly struct EscapeValue
         {
             /// <summary>
             /// This will be null in cases like arglist or a function pointer receiver.
@@ -2026,7 +2026,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// whether analysis should consider value or ref escape. Not all method arguments
         /// are included, and some arguments may be included twice - once for value, once for ref.
         /// </summary>
-        private static void GetFilteredInvocationArgumentsForEscapeWithUpdatedRules(
+        internal static void GetFilteredInvocationArgumentsForEscapeWithUpdatedRules(
             Symbol symbol,
             BoundExpression? receiver,
             ImmutableArray<ParameterSymbol> parameters,
@@ -2055,7 +2055,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             // If we're not invoking with ref or returning a ref struct then the spec does not consider
             // any arguments hence the filter is always empty.
-            if (!isInvokedWithRef && !hasRefLikeReturn(symbol))
+            if (!isInvokedWithRef && !HasRefLikeReturn(symbol))
             {
                 return;
             }
@@ -2070,23 +2070,23 @@ namespace Microsoft.CodeAnalysis.CSharp
                 ignoreArglistRefKinds,
                 mixableArguments: null,
                 escapeValues);
+        }
 
-            static bool hasRefLikeReturn(Symbol symbol)
+        internal static bool HasRefLikeReturn(Symbol symbol)
+        {
+            switch (symbol)
             {
-                switch (symbol)
-                {
-                    case MethodSymbol method:
-                        if (method.MethodKind == MethodKind.Constructor)
-                        {
-                            return method.ContainingType.IsRefLikeType;
-                        }
+                case MethodSymbol method:
+                    if (method.MethodKind == MethodKind.Constructor)
+                    {
+                        return method.ContainingType.IsRefLikeType;
+                    }
 
-                        return method.ReturnType.IsRefLikeType;
-                    case PropertySymbol property:
-                        return property.Type.IsRefLikeType;
-                    default:
-                        return false;
-                }
+                    return method.ReturnType.IsRefLikeType;
+                case PropertySymbol property:
+                    return property.Type.IsRefLikeType;
+                default:
+                    return false;
             }
         }
 

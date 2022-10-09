@@ -24728,5 +24728,278 @@ struct S<T> : System.IDisposable
                 Diagnostic(ErrorCode.ERR_RefReturnLocal, "local").WithArguments("local").WithLocation(19, 15)
                 );
         }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_LocalValEscape(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void Main()
+    {
+        R x = default;
+        int i = 0;
+        R y = new R(ref i);
+        x = y; // 1
+    }
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (12,13): error CS8352: Cannot use variable 'y' in this context because it may expose referenced variables outside of their declaration scope
+                //         x = y; // 1
+                Diagnostic(ErrorCode.ERR_EscapeVariable, "y").WithArguments("y").WithLocation(12, 13));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_LocalRefEscape(bool useRefSafetyVisitor)
+        {
+            var source =
+@"class Program
+{
+    static void Main()
+    {
+        int x = 0;
+        ref int rx = ref x;
+        {
+            int y = 0;
+            rx = ref y; // 1
+        }
+    }
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (9,13): error CS8374: Cannot ref-assign 'y' to 'rx' because 'y' has a narrower escape scope than 'rx'.
+                //             rx = ref y; // 1
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "rx = ref y").WithArguments("rx", "y").WithLocation(9, 13));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignParameterToField(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct S<T>
+{
+    public readonly ref T F;
+    public S(T tValue)
+    {
+        F = ref tValue; // 1
+    }
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor), targetFramework: TargetFramework.Net70);
+            comp.VerifyEmitDiagnostics(
+                // (6,9): error CS8374: Cannot ref-assign 'tValue' to 'F' because 'tValue' has a narrower escape scope than 'F'.
+                //         F = ref tValue; // 1
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "F = ref tValue").WithArguments("F", "tValue").WithLocation(6, 9));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_01(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void M()
+    {
+        int i = 0;
+        ref int a = ref i;
+        R x = new R(ref i);
+        a = ref F(x);
+    }
+    static ref int F(R x) => throw null;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_02(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void M(ref int a)
+    {
+        int i = 0;
+        R x = new R(ref i);
+        a = ref F(x);
+    }
+    static ref int F(R x) => throw null;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (11,9): error CS8374: Cannot ref-assign 'F(x)' to 'a' because 'F(x)' has a narrower escape scope than 'a'.
+                //         a = ref F(x);
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "a = ref F(x)").WithArguments("a", "F(x)").WithLocation(11, 9));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_03(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void M(ref int a)
+    {
+        int i = 0;
+        R x = new R(ref i);
+        R y;
+        a = ref F(x, out y);
+    }
+    static ref int F(R x, out R y) => throw null;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (12,9): error CS8374: Cannot ref-assign 'F(x, out y)' to 'a' because 'F(x, out y)' has a narrower escape scope than 'a'.
+                //         a = ref F(x, out y);
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "a = ref F(x, out y)").WithArguments("a", "F(x, out y)").WithLocation(12, 9),
+                // (12,17): error CS8350: This combination of arguments to 'Program.F(R, out R)' is disallowed because it may expose variables referenced by parameter 'x' outside of their declaration scope
+                //         a = ref F(x, out y);
+                Diagnostic(ErrorCode.ERR_CallArgMixing, "F(x, out y)").WithArguments("Program.F(R, out R)", "x").WithLocation(12, 17),
+                // (12,19): error CS8352: Cannot use variable 'x' in this context because it may expose referenced variables outside of their declaration scope
+                //         a = ref F(x, out y);
+                Diagnostic(ErrorCode.ERR_EscapeVariable, "x").WithArguments("x").WithLocation(12, 19));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_04(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void M(ref int a)
+    {
+        int i = 0;
+        R x = new R(ref i);
+        scoped R y;
+        a = ref F(x, out y);
+    }
+    static ref int F(R x, out R y) => throw null;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (12,9): error CS8374: Cannot ref-assign 'F(x, out y)' to 'a' because 'F(x, out y)' has a narrower escape scope than 'a'.
+                //         a = ref F(x, out y);
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "a = ref F(x, out y)").WithArguments("a", "F(x, out y)").WithLocation(12, 9));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_05(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+    public int Set(R r) { return 0; }
+}
+class Program
+{
+    static void F(ref R x)
+    {
+        int i = 1;
+        R y = new R(ref i);
+        i = x.Set(y);
+    }
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (12,13): error CS8350: This combination of arguments to 'R.Set(R)' is disallowed because it may expose variables referenced by parameter 'r' outside of their declaration scope
+                //         i = x.Set(y);
+                Diagnostic(ErrorCode.ERR_CallArgMixing, "x.Set(y)").WithArguments("R.Set(R)", "r").WithLocation(12, 13),
+                // (12,19): error CS8352: Cannot use variable 'y' in this context because it may expose referenced variables outside of their declaration scope
+                //         i = x.Set(y);
+                Diagnostic(ErrorCode.ERR_EscapeVariable, "y").WithArguments("y").WithLocation(12, 19));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_06(bool useRefSafetyVisitor)
+        {
+            var source =
+@"ref struct R
+{
+    public R(ref int i) { }
+}
+class Program
+{
+    static void F0()
+    {
+        int i = 1;
+        R r;
+        r = F1(ref F2(ref i)); // 1
+    }
+    static R F1(ref int i) => new R(ref i);
+    static ref int F2(ref int i) => ref i;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (11,13): error CS8347: Cannot use a result of 'Program.F1(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+                //         r = F1(ref F2(ref i));
+                Diagnostic(ErrorCode.ERR_EscapeCall, "F1(ref F2(ref i))").WithArguments("Program.F1(ref int)", "i").WithLocation(11, 13),
+                // (11,20): error CS8347: Cannot use a result of 'Program.F2(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+                //         r = F1(ref F2(ref i));
+                Diagnostic(ErrorCode.ERR_EscapeCall, "F2(ref i)").WithArguments("Program.F2(ref int)", "i").WithLocation(11, 20),
+                // (11,27): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+                //         r = F1(ref F2(ref i));
+                Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(11, 27));
+        }
+
+        [Theory]
+        [CombinatorialData]
+        public void UseRefSafetyVisitor_AssignToLocal_07(bool useRefSafetyVisitor)
+        {
+            var source =
+@"class Program
+{
+    static ref int F0(ref int x)
+    {
+        int i = 1;
+        x = ref F1(ref F1(ref i)); // 1
+        return ref F1(ref F1(ref i)); // 2
+    }
+    static ref int F1(ref int i) => ref i;
+}";
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithUseRefSafetyVisitor(useRefSafetyVisitor));
+            comp.VerifyEmitDiagnostics(
+                // (6,9): error CS8374: Cannot ref-assign 'F1(ref F1(ref i))' to 'x' because 'F1(ref F1(ref i))' has a narrower escape scope than 'x'.
+                //         x = ref F1(ref F1(ref i)); // 1
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "x = ref F1(ref F1(ref i))").WithArguments("x", "F1(ref F1(ref i))").WithLocation(6, 9),
+                // (7,20): error CS8347: Cannot use a result of 'Program.F1(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+                //         return ref F1(ref F1(ref i)); // 2
+                Diagnostic(ErrorCode.ERR_EscapeCall, "F1(ref F1(ref i))").WithArguments("Program.F1(ref int)", "i").WithLocation(7, 20),
+                // (7,27): error CS8347: Cannot use a result of 'Program.F1(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+                //         return ref F1(ref F1(ref i)); // 2
+                Diagnostic(ErrorCode.ERR_EscapeCall, "F1(ref i)").WithArguments("Program.F1(ref int)", "i").WithLocation(7, 27),
+                // (7,34): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+                //         return ref F1(ref F1(ref i)); // 2
+                Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(7, 34));
+        }
     }
 }

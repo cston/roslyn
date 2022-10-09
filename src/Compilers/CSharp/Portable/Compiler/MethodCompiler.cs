@@ -1819,6 +1819,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                     }
                     forSemanticModel = new MethodBodySemanticModel.InitialState(syntaxNode, methodBodyForSemanticModel, bodyBinder, snapshotManager, remappedSymbols);
 
+                    if (compilation.UseRefSafetyVisitor)
+                    {
+                        RefSafetyAnalysis.Analyze(compilation, method, methodBody, diagnostics);
+                    }
+
                     switch (methodBody.Kind)
                     {
                         case BoundKind.ConstructorMethodBody:

@@ -1096,7 +1096,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             localSymbol.SetTypeWithAnnotations(declTypeOpt);
 
-            if (initializerOpt != null)
+            if (initializerOpt != null && !Compilation.UseRefSafetyVisitor)
             {
                 if (UseUpdatedEscapeRules && localSymbol.Scope != DeclarationScope.Unscoped)
                 {
@@ -1538,7 +1538,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     op2 = BindToNaturalType(op2, diagnostics);
                 }
 
-                if (verifyEscapeSafety)
+                if (verifyEscapeSafety && !Compilation.UseRefSafetyVisitor)
                 {
                     if (isRef)
                     {

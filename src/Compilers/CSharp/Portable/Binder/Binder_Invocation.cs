@@ -1126,7 +1126,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             Debug.Assert(args.IsDefaultOrEmpty || (object)receiver != (object)args[0]);
 
-            if (!gotError)
+            if (!gotError && !Compilation.UseRefSafetyVisitor)
             {
                 CheckInvocationArgMixing(
                     node,
@@ -2058,7 +2058,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             var refKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
 
             bool hasErrors = ReportUnsafeIfNotAllowed(node, diagnostics);
-            if (!hasErrors)
+            if (!hasErrors && !Compilation.UseRefSafetyVisitor)
             {
                 hasErrors = !CheckInvocationArgMixing(
                     node,

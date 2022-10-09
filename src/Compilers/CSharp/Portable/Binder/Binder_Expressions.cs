@@ -4175,7 +4175,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                     var arguments = analyzedArguments.Arguments.ToImmutable();
                     var refKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
-                    if (!hasErrors)
+                    if (!hasErrors && !Compilation.UseRefSafetyVisitor)
                     {
                         hasErrors = !CheckInvocationArgMixing(
                             nonNullSyntax,
@@ -5592,7 +5592,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 var arguments = analyzedArguments.Arguments.ToImmutable();
                 var refKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
 
-                if (!hasError)
+                if (!hasError && !Compilation.UseRefSafetyVisitor)
                 {
                     hasError = !CheckInvocationArgMixing(
                         node,
@@ -8298,7 +8298,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 var arguments = analyzedArguments.Arguments.ToImmutable();
 
-                if (!gotError)
+                if (!gotError && !Compilation.UseRefSafetyVisitor)
                 {
                     gotError = !CheckInvocationArgMixing(
                         syntax,
