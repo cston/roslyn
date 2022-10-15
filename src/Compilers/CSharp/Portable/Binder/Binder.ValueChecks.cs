@@ -33,7 +33,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// created primarily for ref and out arguments of a ref struct. It also applies
         /// to function pointer this and arglist arguments.
         /// </summary>
-        private readonly struct MixableDestination
+        internal readonly struct MixableDestination
         {
             internal BoundExpression Argument { get; }
 
@@ -2102,7 +2102,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// Optionally this will also return all of the <see cref="MixableDestination" /> that 
         /// result from this invocation. That is useful for MAMM analysis.
         /// </summary>
-        private static void GetEscapeValuesForUpdatedRules(
+        internal static void GetEscapeValuesForUpdatedRules(
             Symbol symbol,
             BoundExpression? receiver,
             ImmutableArray<ParameterSymbol> parameters,
@@ -2165,7 +2165,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             escapeArguments.Free();
         }
 
-        private static string GetInvocationParameterName(ParameterSymbol? parameter)
+        internal static string GetInvocationParameterName(ParameterSymbol? parameter)
         {
             if (parameter is null)
             {
@@ -2179,7 +2179,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             return parameterName;
         }
 
-        private static void ReportInvocationEscapeError(
+        internal static void ReportInvocationEscapeError(
             SyntaxNode syntax,
             Symbol symbol,
             ParameterSymbol? parameter,
@@ -2202,7 +2202,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             return method?.UseUpdatedEscapeRules == true;
         }
 
-        private static bool ShouldInferDeclarationExpressionValEscape(BoundExpression argument, [NotNullWhen(true)] out SourceLocalSymbol? localSymbol)
+        internal static bool ShouldInferDeclarationExpressionValEscape(BoundExpression argument, [NotNullWhen(true)] out SourceLocalSymbol? localSymbol)
         {
             var symbol = argument switch
             {
@@ -2611,7 +2611,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             throw ExceptionUtilities.UnexpectedValue(kind);
         }
 
-        private static ErrorCode GetStandardRValueRefEscapeError(uint escapeTo)
+        internal static ErrorCode GetStandardRValueRefEscapeError(uint escapeTo)
         {
             if (escapeTo is Binder.CallingMethodScope or Binder.ReturnOnlyScope)
             {
@@ -2696,6 +2696,11 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// </summary>
         internal BoundExpression ValidateEscape(BoundExpression expr, uint escapeTo, bool isByRef, BindingDiagnosticBag diagnostics)
         {
+            if (Compilation.UseRefSafetyVisitor)
+            {
+                return expr;
+            }
+
             if (isByRef)
             {
                 if (CheckRefEscape(expr.Syntax, expr, this.LocalScopeDepth, escapeTo, checkingReceiver: false, diagnostics: diagnostics))

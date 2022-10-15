@@ -130,9 +130,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Test.Utilities
         // PROTOTYPE: Remove feature.
         public static CSharpParseOptions WithUseRefSafetyVisitor(this CSharpParseOptions options, bool useRefSafetyRulesVisitor = true)
         {
-            return useRefSafetyRulesVisitor ?
-                options.WithFeature("UseRefSafetyVisitor") :
-                options;
+            return options.WithFeature("UseRefSafetyVisitor", useRefSafetyRulesVisitor ? "true" : "false");
         }
 
         public static CSharpParseOptions WithFeature(this CSharpParseOptions options, string feature, string value = "true")

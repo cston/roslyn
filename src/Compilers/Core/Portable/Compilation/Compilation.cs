@@ -3418,7 +3418,7 @@ namespace Microsoft.CodeAnalysis
         }
 
         // PROTOTYPE: Remove feature.
-        internal bool UseRefSafetyVisitor => Feature("UseRefSafetyVisitor") is { };
+        internal bool UseRefSafetyVisitor => !string.Equals(Feature("UseRefSafetyVisitor"), "false", StringComparison.OrdinalIgnoreCase);
 
         #endregion
 
