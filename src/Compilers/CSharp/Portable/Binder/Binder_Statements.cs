@@ -1551,9 +1551,9 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                         var leftEscape = GetRefEscape(op1, LocalScopeDepth);
                         var rightEscape = GetRefEscape(op2, LocalScopeDepth);
-                        if (leftEscape < rightEscape)
+                        if (leftEscape.CompareTo(rightEscape) is EscapeScope.Comparison.LessThan or EscapeScope.Comparison.CannotCompare)
                         {
-                            var errorCode = (rightEscape, this.InUnsafeRegion) switch
+                            var errorCode = ((uint)rightEscape, this.InUnsafeRegion) switch
                             {
                                 (Binder.ReturnOnlyScope, false) => ErrorCode.ERR_RefAssignReturnOnly,
                                 (Binder.ReturnOnlyScope, true) => ErrorCode.WRN_RefAssignReturnOnly,
@@ -1567,7 +1567,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                                 op2 = ToBadExpression(op2);
                             }
                         }
-                        else if (op1.Kind is BoundKind.Local or BoundKind.Parameter)
+                        else if (op1.Kind is BoundKind.Local or BoundKind.Parameter) // PROTOTYPE: Is this case still needed?
                         {
                             leftEscape = GetValEscape(op1, LocalScopeDepth);
                             rightEscape = GetValEscape(op2, LocalScopeDepth);

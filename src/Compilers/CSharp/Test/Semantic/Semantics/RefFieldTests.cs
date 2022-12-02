@@ -27082,5 +27082,64 @@ Block[B2] - Exit
                 //             return new RS(ref i4); // 4
                 Diagnostic(ErrorCode.ERR_RefReturnScopedParameter, "i4").WithArguments("i4").WithLocation(14, 31));
         }
+
+        [Fact]
+        public void RefToRef_01()
+        {
+            var source = """
+                using System.Diagnostics.CodeAnalysis;
+                class Repro
+                {
+                    static void Bad()
+                    {
+                        int value = 100;
+                        R s1 = new R();
+                        s1.RefField = ref value;
+                    }
+                }
+                ref struct R
+                {
+                    public ref int RefField;
+                    [UnscopedRef] public ref R Ref => ref this;
+                }
+                """;
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net70);
+            comp.VerifyDiagnostics(
+                // (8,9): error CS8374: Cannot ref-assign 'value' to 'RefField' because 'value' has a narrower escape scope than 'RefField'.
+                //         s1.RefField = ref value;
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "s1.RefField = ref value").WithArguments("RefField", "value").WithLocation(8, 9));
+        }
+
+        [WorkItem(64045, "https://github.com/dotnet/roslyn/issues/65648")]
+        [Fact]
+        public void RefToRef_02()
+        {
+            var source = """
+                using System.Diagnostics.CodeAnalysis;
+                class Repro
+                {
+                    static void Bad()
+                    {
+                        int value = 100;
+                        R s1 = new R();
+                        s1.Ref.RefField = ref value;
+                    }
+                }
+                ref struct R
+                {
+                    public ref int RefField;
+                    [UnscopedRef] public ref R Ref => ref this;
+                }
+                """;
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net70);
+            comp.VerifyDiagnostics(
+                // (8,9): error CS8374: Cannot ref-assign 'value' to 'RefField' because 'value' has a narrower escape scope than 'RefField'.
+                //         s1.Ref.RefField = ref value;
+                Diagnostic(ErrorCode.ERR_RefAssignNarrower, "s1.Ref.RefField = ref value").WithArguments("RefField", "value").WithLocation(8, 9));
+        }
+
+        // PROTOTYPE: Test ref to ref struct cyclic assignment.
+
+        // PROTOTYPE: Test ref scoped.
     }
 }
