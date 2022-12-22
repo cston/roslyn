@@ -29371,5 +29371,65 @@ Block[B2] - Exit
                 // }
                 Diagnostic(ErrorCode.ERR_RbraceExpected, "").WithLocation(27, 2));
         }
+
+        [Fact]
+        public void Temp_Assignment_01()
+        {
+            var source = """
+                ref struct R
+                {
+                    public R(ref int i) { }
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        R r = default;
+                        int i = 0;
+                        r = new R(ref i);
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyDiagnostics(
+                // (11,13): error CS8347: Cannot use a result of 'R.R(ref int)' in this context because it may expose variables referenced by parameter 'i' outside of their declaration scope
+                //         r = new R(ref i);
+                Diagnostic(ErrorCode.ERR_EscapeCall, "new R(ref i)").WithArguments("R.R(ref int)", "i").WithLocation(11, 13),
+                // (11,23): error CS8168: Cannot return local 'i' by reference because it is not a ref local
+                //         r = new R(ref i);
+                Diagnostic(ErrorCode.ERR_RefReturnLocal, "i").WithArguments("i").WithLocation(11, 23));
+        }
+
+        [WorkItem(65596, "https://github.com/dotnet/roslyn/issues/65596")]
+        [Fact]
+        public void Temp_NestedCalls()
+        {
+            var source = """
+                #pragma warning disable 8321
+
+                static string BuildString(ref Builder<char> builder)
+                {
+                    string name = "";
+                    return builder
+                        .Append(name)
+                        .Append(name)
+                        .Append(name)
+                        .Append(name)
+                        .ToString();
+                }
+
+                ref struct Builder<T>
+                {
+                    public override string ToString() => "";
+                }
+
+                static class Extensions
+                {
+                    public static ref Builder<char> Append(this ref Builder<char> builder, string txt) => ref builder;
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyDiagnostics();
+        }
     }
 }

@@ -83,6 +83,69 @@ namespace Microsoft.CodeAnalysis.CSharp
         private Dictionary<BoundValuePlaceholderBase, uint>? _placeholderScopes;
         private uint _patternInputValEscape;
 
+        // PROTOTYPE: Reduce allocations, perhaps by using a struct.
+        private abstract class Result
+        {
+            internal static Result Create(SyntaxNode syntax, BoundExpression expression, bool isRef, uint escapeScope)
+            {
+                return new ExpressionResult(syntax, expression, isRef, escapeScope);
+            }
+
+            internal abstract SyntaxNode Syntax { get; }
+            internal abstract uint EscapeScope { get; }
+
+            internal Result WithParameter(SyntaxNode syntax, Symbol containingSymbol, ParameterSymbol? parameter)
+            {
+                return new ParameterResult(syntax, containingSymbol, parameter, this);
+            }
+
+            internal static Result Max(in Result a, in Result b)
+            {
+                return a.EscapeScope < b.EscapeScope ? b : a;
+            }
+
+            // PROTOTYPE: Do we need these operators?
+            public static bool operator >=(in Result a, uint b) => a.EscapeScope >= b;
+            public static bool operator <=(in Result a, uint b) => a.EscapeScope <= b;
+            public static bool operator >(in Result a, uint b) => a.EscapeScope > b;
+            public static bool operator <(in Result a, uint b) => a.EscapeScope < b;
+        }
+
+        private sealed class ExpressionResult : Result
+        {
+            public readonly BoundExpression Expression;
+            public readonly bool IsRef;
+
+            internal ExpressionResult(SyntaxNode syntax, BoundExpression expression, bool isRef, uint escapeScope)
+            {
+                Syntax = syntax;
+                EscapeScope = escapeScope;
+                Expression = expression;
+                IsRef = isRef;
+            }
+
+            internal override SyntaxNode Syntax { get; }
+            internal override uint EscapeScope { get; }
+        }
+
+        private sealed class ParameterResult : Result
+        {
+            public readonly Symbol ContainingSymbol;
+            public readonly ParameterSymbol? Parameter;
+            public readonly Result ArgumentResult;
+
+            internal ParameterResult(SyntaxNode syntax, Symbol containingSymbol, ParameterSymbol? parameter, Result argumentResult)
+            {
+                Syntax = syntax;
+                ContainingSymbol = containingSymbol;
+                Parameter = parameter;
+                ArgumentResult = argumentResult;
+            }
+
+            internal override SyntaxNode Syntax { get; }
+            internal override uint EscapeScope => ArgumentResult.EscapeScope;
+        }
+
         private RefSafetyAnalysis(
             CSharpCompilation compilation,
             Symbol symbol,
@@ -880,6 +943,138 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             return null;
+        }
+
+        // PROTOTYPE: Should checkingReceiver be part of the Result instead?
+        private bool ReportRefEscapeErrors(Result result, uint escapeTo, bool checkingReceiver)
+        {
+            uint escapeScope = result.EscapeScope;
+            if (escapeScope <= escapeTo)
+            {
+                return true;
+            }
+
+            var inUnsafeRegion = _inUnsafeRegion;
+
+            while (result is ParameterResult parameterResult)
+            {
+                if (!inUnsafeRegion)
+                {
+                    ReportInvocationEscapeError(result.Syntax!, parameterResult.ContainingSymbol, parameterResult.Parameter, checkingReceiver, _diagnostics);
+                }
+                result = parameterResult.ArgumentResult;
+            }
+
+            var expressionResult = (ExpressionResult)result;
+            var expr = expressionResult.Expression;
+
+            if (expressionResult.IsRef)
+            {
+                switch (expr.Kind)
+                {
+                    case BoundKind.Local:
+                        {
+                            var localSymbol = ((BoundLocal)expr).LocalSymbol;
+                            if (escapeTo is CallingMethodScope or ReturnOnlyScope)
+                            {
+                                if (localSymbol.RefKind == RefKind.None)
+                                {
+                                    if (checkingReceiver)
+                                    {
+                                        Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_RefReturnLocal2 : ErrorCode.ERR_RefReturnLocal2, expr.Syntax, localSymbol);
+                                    }
+                                    else
+                                    {
+                                        Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_RefReturnLocal : ErrorCode.ERR_RefReturnLocal, result.Syntax, localSymbol);
+                                    }
+                                }
+                                else if (checkingReceiver)
+                                {
+                                    Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_RefReturnNonreturnableLocal2 : ErrorCode.ERR_RefReturnNonreturnableLocal2, expr.Syntax, localSymbol);
+                                }
+                                else
+                                {
+                                    Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_RefReturnNonreturnableLocal : ErrorCode.ERR_RefReturnNonreturnableLocal, result.Syntax, localSymbol);
+                                }
+                            }
+                            else
+                            {
+                                Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_EscapeVariable : ErrorCode.ERR_EscapeVariable, result.Syntax, localSymbol);
+                            }
+                        }
+                        break;
+
+                    case BoundKind.ThisReference:
+                        Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_RefReturnStructThis : ErrorCode.ERR_RefReturnStructThis, result.Syntax);
+                        break;
+
+                    case BoundKind.Parameter:
+                        {
+                            var parameterSymbol = ((BoundParameter)expr).ParameterSymbol;
+                            var isRefScoped = parameterSymbol.EffectiveScope == ScopedKind.ScopedRef;
+                            Debug.Assert(parameterSymbol.RefKind == RefKind.None || isRefScoped || escapeScope == ReturnOnlyScope);
+#pragma warning disable format
+                            var (errorCode, syntax) = (checkingReceiver, isRefScoped, inUnsafeRegion, escapeScope) switch
+                            {
+                                (checkingReceiver: true,  isRefScoped: true,  inUnsafeRegion: false, _)                      => (ErrorCode.ERR_RefReturnScopedParameter2, expr.Syntax),
+                                (checkingReceiver: true,  isRefScoped: true,  inUnsafeRegion: true,  _)                      => (ErrorCode.WRN_RefReturnScopedParameter2, expr.Syntax),
+                                (checkingReceiver: true,  isRefScoped: false, inUnsafeRegion: false, ReturnOnlyScope) => (ErrorCode.ERR_RefReturnOnlyParameter2,   expr.Syntax),
+                                (checkingReceiver: true,  isRefScoped: false, inUnsafeRegion: true,  ReturnOnlyScope) => (ErrorCode.WRN_RefReturnOnlyParameter2,   expr.Syntax),
+                                (checkingReceiver: true,  isRefScoped: false, inUnsafeRegion: false, _)                      => (ErrorCode.ERR_RefReturnParameter2,       expr.Syntax),
+                                (checkingReceiver: true,  isRefScoped: false, inUnsafeRegion: true,  _)                      => (ErrorCode.WRN_RefReturnParameter2,       expr.Syntax),
+                                (checkingReceiver: false, isRefScoped: true,  inUnsafeRegion: false, _)                      => (ErrorCode.ERR_RefReturnScopedParameter,  result.Syntax),
+                                (checkingReceiver: false, isRefScoped: true,  inUnsafeRegion: true,  _)                      => (ErrorCode.WRN_RefReturnScopedParameter,  result.Syntax),
+                                (checkingReceiver: false, isRefScoped: false, inUnsafeRegion: false, ReturnOnlyScope) => (ErrorCode.ERR_RefReturnOnlyParameter,    result.Syntax),
+                                (checkingReceiver: false, isRefScoped: false, inUnsafeRegion: true,  ReturnOnlyScope) => (ErrorCode.WRN_RefReturnOnlyParameter,    result.Syntax),
+                                (checkingReceiver: false, isRefScoped: false, inUnsafeRegion: false, _)                      => (ErrorCode.ERR_RefReturnParameter,        result.Syntax),
+                                (checkingReceiver: false, isRefScoped: false, inUnsafeRegion: true,  _)                      => (ErrorCode.WRN_RefReturnParameter,        result.Syntax)
+                            };
+#pragma warning restore format
+                            Error(_diagnostics, errorCode, syntax, parameterSymbol.Name);
+                        }
+                        break;
+
+                    default:
+                        Debug.Assert(expr is BoundDiscardExpression
+                            or BoundLiteral { ConstantValueOpt: { } }
+                            or BoundConversion
+                            or BoundStackAllocArrayCreation
+                            or BoundConvertedStackAllocExpression);
+                        // At this point we should have covered all the possible cases for anything that is not a strict RValue.
+                        Error(_diagnostics, GetStandardRValueRefEscapeError(escapeTo), expr.Syntax);
+                        break;
+                }
+            }
+            else
+            {
+                switch (expr.Kind)
+                {
+                    case BoundKind.Local:
+                        {
+                            var localSymbol = ((BoundLocal)expr).LocalSymbol;
+                            Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_EscapeVariable : ErrorCode.ERR_EscapeVariable, result.Syntax, localSymbol);
+                        }
+                        break;
+
+                    case BoundKind.Parameter:
+                        {
+                            var parameterSymbol = ((BoundParameter)expr).ParameterSymbol;
+                            Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_EscapeVariable : ErrorCode.ERR_EscapeVariable, result.Syntax, parameterSymbol);
+                        }
+                        break;
+
+                    case BoundKind.StackAllocArrayCreation:
+                    case BoundKind.ConvertedStackAllocExpression:
+                        Error(_diagnostics, inUnsafeRegion ? ErrorCode.WRN_EscapeStackAlloc : ErrorCode.ERR_EscapeStackAlloc, expr.Syntax, expr.Type!);
+                        break;
+
+                    default:
+                        Debug.Assert(false);
+                        break;
+                }
+            }
+
+            return inUnsafeRegion;
         }
 
         private static void Error(BindingDiagnosticBag diagnostics, ErrorCode code, SyntaxNodeOrToken syntax, params object[] args)
