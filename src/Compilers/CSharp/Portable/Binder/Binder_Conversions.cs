@@ -542,6 +542,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case CollectionLiteralTypeKind.Span:
                 case CollectionLiteralTypeKind.ReadOnlySpan:
                     return BindArrayOrSpanCollectionLiteral(node, targetType, wasCompilerGenerated: wasCompilerGenerated, collectionTypeKind, elementType!, diagnostics);
+                case CollectionLiteralTypeKind.CollectionBuilder:
+                    return BindCollectionBuilderCollectionLiteral(node, targetType, wasCompilerGenerated: wasCompilerGenerated, diagnostics);
                 case CollectionLiteralTypeKind.ListInterface:
                     return BindListInterfaceCollectionLiteral(node, targetType, wasCompilerGenerated: wasCompilerGenerated, elementType!, diagnostics);
                 case CollectionLiteralTypeKind.None:
@@ -590,7 +592,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             var builder = ArrayBuilder<BoundExpression>.GetInstance(elements.Length);
             foreach (var element in elements)
             {
-                builder.Add(convertArrayElement(element, elementType, diagnostics));
+                builder.Add(ConvertCollectionLiteralArrayElement(element, elementType, diagnostics));
             }
             return new BoundCollectionLiteralExpression(
                 syntax,
@@ -600,32 +602,32 @@ namespace Microsoft.CodeAnalysis.CSharp
                 builder.ToImmutableAndFree(),
                 targetType)
             { WasCompilerGenerated = wasCompilerGenerated };
+        }
 
-            BoundExpression convertArrayElement(BoundExpression element, TypeSymbol elementType, BindingDiagnosticBag diagnostics)
+        private BoundExpression ConvertCollectionLiteralArrayElement(BoundExpression element, TypeSymbol elementType, BindingDiagnosticBag diagnostics)
+        {
+            var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
+            var conversion = Conversions.ClassifyImplicitConversionFromExpression(element, elementType, ref useSiteInfo);
+            diagnostics.Add(element.Syntax, useSiteInfo);
+            bool hasErrors = !conversion.IsValid;
+            if (hasErrors)
             {
-                var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
-                var conversion = Conversions.ClassifyImplicitConversionFromExpression(element, elementType, ref useSiteInfo);
-                diagnostics.Add(element.Syntax, useSiteInfo);
-                bool hasErrors = !conversion.IsValid;
-                if (hasErrors)
-                {
-                    GenerateImplicitConversionError(diagnostics, element.Syntax, conversion, element, elementType);
-                    // Suppress any additional diagnostics
-                    diagnostics = BindingDiagnosticBag.Discarded;
-                }
-                var result = CreateConversion(
-                    element.Syntax,
-                    element,
-                    conversion,
-                    isCast: false,
-                    conversionGroupOpt: null,
-                    wasCompilerGenerated: true,
-                    destination: elementType,
-                    diagnostics,
-                    hasErrors: hasErrors);
-                result.WasCompilerGenerated = true;
-                return result;
+                GenerateImplicitConversionError(diagnostics, element.Syntax, conversion, element, elementType);
+                // Suppress any additional diagnostics
+                diagnostics = BindingDiagnosticBag.Discarded;
             }
+            var result = CreateConversion(
+                element.Syntax,
+                element,
+                conversion,
+                isCast: false,
+                conversionGroupOpt: null,
+                wasCompilerGenerated: true,
+                destination: elementType,
+                diagnostics,
+                hasErrors: hasErrors);
+            result.WasCompilerGenerated = true;
+            return result;
         }
 
         private BoundCollectionLiteralExpression BindCollectionInitializerCollectionLiteral(
@@ -730,6 +732,44 @@ namespace Microsoft.CodeAnalysis.CSharp
                 elements: builder.ToImmutableAndFree(),
                 targetType,
                 hasErrors: true);
+        }
+
+        private BoundCollectionLiteralExpression BindCollectionBuilderCollectionLiteral(
+            BoundUnconvertedCollectionLiteralExpression node,
+            TypeSymbol targetType,
+            bool wasCompilerGenerated,
+            BindingDiagnosticBag diagnostics)
+        {
+            var syntax = (CSharpSyntaxNode)node.Syntax;
+
+            var elements = node.Elements;
+            if (elements.Any(e => e is BoundCollectionLiteralSpreadElement))
+            {
+                // PROTOTYPE: ...
+                throw ExceptionUtilities.UnexpectedValue(syntax);
+            }
+
+            var constructMethod = ((NamedTypeSymbol)targetType).CollectionBuilderMethod;
+            Debug.Assert(constructMethod is { });
+
+            var spanType = (NamedTypeSymbol)constructMethod.Parameters[0].Type;
+            Debug.Assert(spanType.OriginalDefinition.Equals(Compilation.GetWellKnownType(WellKnownType.System_ReadOnlySpan_T), TypeCompareKind.AllIgnoreOptions));
+
+            var elementType = spanType.TypeArgumentsWithAnnotationsNoUseSiteDiagnostics[0].Type;
+            var implicitReceiver = new BoundObjectOrCollectionValuePlaceholder(syntax, isNewInstance: true, spanType) { WasCompilerGenerated = true };
+            var builder = ArrayBuilder<BoundExpression>.GetInstance(elements.Length);
+            foreach (var element in elements)
+            {
+                builder.Add(ConvertCollectionLiteralArrayElement(element, elementType, diagnostics));
+            }
+            return new BoundCollectionLiteralExpression(
+                syntax,
+                CollectionLiteralTypeKind.CollectionBuilder,
+                implicitReceiver,
+                collectionCreation: null,
+                builder.ToImmutableAndFree(),
+                targetType)
+            { WasCompilerGenerated = wasCompilerGenerated };
         }
 
         /// <summary>

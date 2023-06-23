@@ -1613,6 +1613,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        // PROTOTYPE: Should be abstract.
+        internal virtual MethodSymbol CollectionBuilderMethod => null;
+
         /// <summary>
         /// Requires less computation than <see cref="TypeSymbol.TypeKind"/> == <see cref="TypeKind.Interface"/>.
         /// </summary>

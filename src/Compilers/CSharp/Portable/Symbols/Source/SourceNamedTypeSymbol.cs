@@ -1154,6 +1154,10 @@ next:;
             {
                 CSharpAttributeData.DecodeSkipLocalsInitAttribute<TypeWellKnownAttributeData>(DeclaringCompilation, ref arguments);
             }
+            else if (attribute.IsTargetAttribute(this, AttributeDescription.CollectionBuilderAttribute))
+            {
+                arguments.GetOrCreateData<TypeWellKnownAttributeData>().CollectionBuilderMethod = attribute.DecodeCollectionBuilderAttribute();
+            }
             else if (_lazyIsExplicitDefinitionOfNoPiaLocalType == ThreeState.Unknown && attribute.IsTargetAttribute(this, AttributeDescription.TypeIdentifierAttribute))
             {
                 _lazyIsExplicitDefinitionOfNoPiaLocalType = ThreeState.True;
@@ -1310,6 +1314,9 @@ next:;
                 return data != null ? data.ComImportCoClass : null;
             }
         }
+
+        internal override MethodSymbol CollectionBuilderMethod
+            => GetDecodedWellKnownAttributeData()?.CollectionBuilderMethod;
 
         private void ValidateConditionalAttribute(CSharpAttributeData attribute, AttributeSyntax node, BindingDiagnosticBag diagnostics)
         {

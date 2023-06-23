@@ -5,9 +5,6 @@
 #nullable disable
 
 using System.Diagnostics;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols
 {
@@ -50,6 +47,24 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             {
                 VerifySealed(expected: false);
                 _hasSkipLocalsInitAttribute = value;
+                SetDataStored();
+            }
+        }
+        #endregion
+
+        #region CollectionBuilderAttribute
+        private MethodSymbol _collectionBuilderMethod;
+        public MethodSymbol CollectionBuilderMethod
+        {
+            get
+            {
+                VerifySealed(expected: true);
+                return _collectionBuilderMethod;
+            }
+            set
+            {
+                VerifySealed(expected: false);
+                _collectionBuilderMethod = value;
                 SetDataStored();
             }
         }

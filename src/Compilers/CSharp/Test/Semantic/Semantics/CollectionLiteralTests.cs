@@ -15,6 +15,16 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
 {
     public class CollectionLiteralTests : CSharpTestBase
     {
+        private const string s_constructibleCollectionAttributeDefinition = """
+            namespace System.Runtime.CompilerServices
+            {
+                public sealed class CollectionBuilderAttribute : Attribute
+                {
+                    public CollectionBuilderAttribute(Type constructorType, string constructorMethod) { }
+                }
+            }
+            """;
+
         private const string s_collectionExtensions = """
             using System;
             using System.Collections;
@@ -5642,6 +5652,91 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
             Assert.Equal(expectedType, typeInfo.Type?.ToTestDisplayString());
             Assert.Equal(expectedConvertedType, typeInfo.ConvertedType?.ToTestDisplayString());
             Assert.Equal(expectedConversionKind, conversion.Kind);
+        }
+
+        // PROTOTYPE: Test combinations of generic methods and types for the builder.
+        // PROTOTYPE: Test different nested generic types for collection and builder.
+        // PROTOTYPE: Test collection with unknown length.
+        // PROTOTYPE: Test that collection cannot be created if the builder method is invalid, even if the type is a collection initializer.
+
+        [CombinatorialData]
+        [ConditionalTheory(typeof(CoreClrOnly))]
+        public void CollectionBuilder_01(bool useCompilationReference)
+        {
+            string sourceA = """
+                using System;
+                using System.Collections;
+                using System.Runtime.CompilerServices;
+                [CollectionBuilder(typeof(MyCollectionBuilder), "Create")]
+                public struct MyCollection<T> : IEnumerable
+                {
+                    private readonly T[] _array;
+                    public MyCollection(T[] array) { _array = array; }
+                    public int Length => _array.Length;
+                    public T this[int index] => _array[index];
+                    IEnumerator IEnumerable.GetEnumerator() => _array.GetEnumerator();
+                }
+                public class MyCollectionBuilder
+                {
+                    public static MyCollection<T> Create<T>(ReadOnlySpan<T> items)
+                    {
+                        return new MyCollection<T>(items.ToArray());
+                    }
+                }
+                """;
+            var comp = CreateCompilation(new[] { sourceA, s_constructibleCollectionAttributeDefinition }, targetFramework: TargetFramework.Net70);
+            var refA = AsReference(comp, useCompilationReference);
+
+            string sourceB1 = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        MyCollection<int> c = F1();
+                        c.Report();
+                    }
+                    static MyCollection<int> F1()
+                    {
+                        return [1, 2, 3];
+                    }
+                }
+                """;
+
+            var verifier = CompileAndVerify(new[] { sourceB1, s_collectionExtensions }, references: new[] { refA }, targetFramework: TargetFramework.Net70, expectedOutput: "[1, 2, 3], ");
+            verifier.VerifyIL("Program.F1",
+                """
+                {
+                  // Code size       16 (0x10)
+                  .maxstack  1
+                  IL_0000:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12_Align=4 <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D4"
+                  IL_0005:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
+                  IL_000a:  call       "MyCollection<int> MyCollectionBuilder.Create<int>(System.ReadOnlySpan<int>)"
+                  IL_000f:  ret
+                }
+                """);
+
+            string sourceB2 = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        MyCollection<object> c = F2([1, 2]);
+                        c.Report();
+                    }
+                    static MyCollection<object> F2(MyCollection<object> c)
+                    {
+                        return [..c, 3];
+                    }
+                }
+                """;
+
+            verifier = CompileAndVerify(new[] { sourceB2, s_collectionExtensions }, references: new[] { refA }, targetFramework: TargetFramework.Net70, expectedOutput: "[1, 2, 3], ");
+            verifier.VerifyIL("Program.F2",
+                """
+                {
+                ...
+                }
+                """);
         }
 
         [ConditionalFact(typeof(DesktopOnly))]

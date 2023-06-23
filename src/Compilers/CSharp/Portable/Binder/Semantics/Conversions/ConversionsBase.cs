@@ -1619,6 +1619,11 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 return CollectionLiteralTypeKind.ReadOnlySpan;
             }
+            else if (destination is NamedTypeSymbol { CollectionBuilderMethod: { } constructMethod })
+            {
+                // PROTOTYPE: Verify method has expected signature, accessible, static, non-abstract, etc.
+                return CollectionLiteralTypeKind.CollectionBuilder;
+            }
             else if (implementsIEnumerable(compilation, destination))
             {
                 elementType = null;

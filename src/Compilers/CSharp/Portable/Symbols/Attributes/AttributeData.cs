@@ -661,6 +661,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             return guidString!;
         }
 
+        internal MethodSymbol DecodeCollectionBuilderAttribute()
+        {
+            // PROTOTYPE: Handle unexpected arguments.
+            var methodType = (NamedTypeSymbol)CommonConstructorArguments[0].ValueInternal!;
+            var methodName = (string)CommonConstructorArguments[1].ValueInternal!;
+            return (MethodSymbol)methodType.GetMembers(methodName).Single(); // PROTOTYPE: Handle overloads and members other than methods.
+        }
+
         private protected sealed override bool IsStringProperty(string memberName)
         {
             if (AttributeClass is object)

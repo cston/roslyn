@@ -409,6 +409,32 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return OriginalDefinition.ComImportCoClass; }
         }
 
+        internal sealed override MethodSymbol CollectionBuilderMethod
+        {
+            get
+            {
+                // PROTOTYPE: We're assuming the method is non-generic with a containing
+                // type that has the same arity as this type. Is that a valid assumption?
+                var constructMethod = OriginalDefinition.CollectionBuilderMethod;
+                if (constructMethod is null)
+                {
+                    return null;
+                }
+                var constructType = constructMethod.ContainingType;
+                // PROTOTYPE: Handle nested types.
+                if (constructType.Arity > 0)
+                {
+                    // PROTOTYPE: Test this case.
+                    constructType = constructType.Construct(TypeArgumentsWithAnnotationsNoUseSiteDiagnostics);
+                    return constructMethod.AsMember(constructType);
+                }
+                else
+                {
+                    return constructMethod.Construct(TypeArgumentsWithAnnotationsNoUseSiteDiagnostics);
+                }
+            }
+        }
+
         internal override IEnumerable<MethodSymbol> GetMethodsToEmit()
         {
             throw ExceptionUtilities.Unreachable();
