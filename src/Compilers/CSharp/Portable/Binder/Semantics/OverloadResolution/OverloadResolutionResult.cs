@@ -755,7 +755,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     diagnostics.Add(new DiagnosticInfoWithSymbols(
                         ErrorCode.ERR_NoSuchMemberOrExtension,
-                        new object[] { instanceArgument.Type, inferenceFailed.Member.Name },
+                        new object[] { instanceArgument.Type, inferenceFailed.Member.Name }, // PROTOTYPE: instanceArgument.Type may be null for [] or [null].
                         symbols), location);
                 }
 

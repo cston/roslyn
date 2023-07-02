@@ -53,7 +53,7 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                     Console.Write(builder.ToString());
                     Console.Write(", ");
                 }
-                private static string GetTypeName(Type type)
+                internal static string GetTypeName(this Type type)
                 {
                     if (type.IsArray)
                     {
@@ -1189,16 +1189,109 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                     {
                         var a = [1, 2, 3].AsArray();
                         a.Report();
+                        var b = [default].AsArray<int>();
+                        b.Report();
+                        var c = [].AsArray<int>();
+                        c.Report();
                     }
                 }
                 """;
-            var comp = CreateCompilation(new[] { source, s_collectionExtensions });
-            comp.VerifyEmitDiagnostics(
-                // 0.cs(9,17): error CS9176: There is no target type for the collection literal.
-                //         var a = [1, 2, 3].AsArray();
-                Diagnostic(ErrorCode.ERR_CollectionLiteralNoTargetType, "[1, 2, 3]").WithLocation(9, 17));
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "[1, 2, 3], [0], [], ");
         }
 
+        [Fact]
+        public void TypeInference_07B()
+        {
+            string source = """
+                static class Program
+                {
+                    static T[] AsArray<T>(this T[] args)
+                    {
+                        return args;
+                    }
+                    static void Main()
+                    {
+                        var a = [4]?.AsArray();
+                        a.Report();
+                    }
+                }
+                """;
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "[4], ");
+        }
+
+        [Fact]
+        public void TypeInference_07C()
+        {
+            string source = """
+                static class Program
+                {
+                    static T[] AsArray<T>(this T[] args)
+                    {
+                        return args;
+                    }
+                    static void Main()
+                    {
+                        var a = [1, 2, 3].AsArray;
+                        a().Report();
+                        var b = [default].AsArray<int>;
+                        b().Report();
+                        var c = [].AsArray<int>;
+                        c().Report();
+                    }
+                }
+                """;
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "[1, 2, 3], [0], [], ");
+        }
+
+        [Fact]
+        public void TypeInference_07D()
+        {
+            string source = """
+                static class Program
+                {
+                    static byte[] AsByteArray(this byte[] args)
+                    {
+                        return args;
+                    }
+                    static void Main()
+                    {
+                        var a = [1, 2, 3].AsByteArray();
+                        a.Report(includeType: true);
+                        var b = [default].AsByteArray();
+                        b.Report(includeType: true);
+                        var c = [].AsByteArray();
+                        c.Report(includeType: true);
+                    }
+                }
+                """;
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "(System.Byte[]) [1, 2, 3], (System.Byte[]) [0], (System.Byte[]) [], ");
+        }
+
+        [Fact]
+        public void TypeInference_07E()
+        {
+            string source = """
+                static class Program
+                {
+                    static byte[] AsByteArray(this byte[] args)
+                    {
+                        return args;
+                    }
+                    static void Main()
+                    {
+                        var a = [1, 2, 3].AsByteArray;
+                        a().Report(includeType: true);
+                        var b = [default].AsByteArray;
+                        b().Report(includeType: true);
+                        var c = [].AsByteArray;
+                        c().Report(includeType: true);
+                    }
+                }
+                """;
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "(System.Byte[]) [1, 2, 3], (System.Byte[]) [0], (System.Byte[]) [], ");
+        }
+
+        // PROTOTYPE: Test cases where the collection has no element type or is incompatible with 'this'. (See TypeInference_09.)
         [Fact]
         public void TypeInference_08()
         {
@@ -1229,15 +1322,50 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                     static void Main()
                     {
                         var a = AsCollection([1, 2, 3]);
+                        a.Report(includeType: true);
                         var b = [4].AsCollection();
+                        b.Report(includeType: true);
                     }
                 }
                 """;
-            var comp = CreateCompilation(source);
-            comp.VerifyEmitDiagnostics(
-                // (27,17): error CS9176: There is no target type for the collection literal.
-                //         var b = [4].AsCollection();
-                Diagnostic(ErrorCode.ERR_CollectionLiteralNoTargetType, "[4]").WithLocation(27, 17));
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "(S<System.Int32>) [1, 2, 3], (S<System.Int32>) [4], ");
+        }
+
+        [Fact]
+        public void TypeInference_08B()
+        {
+            string source = """
+                using System.Collections;
+                using System.Collections.Generic;
+                struct S<T> : IEnumerable<T>
+                {
+                    private List<T> _list;
+                    public void Add(T t)
+                    {
+                        _list ??= new List<T>();
+                        _list.Add(t);
+                    }
+                    public IEnumerator<T> GetEnumerator()
+                    {
+                        _list ??= new List<T>();
+                        return _list.GetEnumerator();
+                    }
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+                static class Program
+                {
+                    static S<T> AsCollection<T>(this S<T> args)
+                    {
+                        return args;
+                    }
+                    static void Main()
+                    {
+                        var c = [5]?.AsCollection();
+                        c.Report(includeType: true);
+                    }
+                }
+                """;
+            CompileAndVerify(new[] { source, s_collectionExtensions }, expectedOutput: "(S<System.Int32>) [1, 2, 3], (S<System.Int32>) [4], ");
         }
 
         [Fact]
@@ -1258,20 +1386,38 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                     }
                     static void Main()
                     {
-                        _ = AsCollection([1, 2, 3]);
-                        _ = [4].AsCollection();
+                        _ = AsCollection([]);
+                        _ = [].AsCollection();
+                        _ = AsCollection([1, null]);
+                        _ = [1, null].AsCollection();
                     }
                 }
                 """;
             var comp = CreateCompilation(source);
             comp.VerifyEmitDiagnostics(
                 // (15,13): error CS0411: The type arguments for method 'Program.AsCollection<T>(S<T>)' cannot be inferred from the usage. Try specifying the type arguments explicitly.
-                //         _ = AsCollection([1, 2, 3]);
+                //         _ = AsCollection([]);
                 Diagnostic(ErrorCode.ERR_CantInferMethTypeArgs, "AsCollection").WithArguments("Program.AsCollection<T>(S<T>)").WithLocation(15, 13),
-                // (16,13): error CS9176: There is no target type for the collection literal.
-                //         _ = [4].AsCollection();
-                Diagnostic(ErrorCode.ERR_CollectionLiteralNoTargetType, "[4]").WithLocation(16, 13));
+                // (16,16): error CS0117: 'collection literals' does not contain a definition for 'AsCollection'
+                //         _ = [].AsCollection();
+                Diagnostic(ErrorCode.ERR_NoSuchMember, "AsCollection").WithArguments("collection literals", "AsCollection").WithLocation(16, 16),
+                // (17,13): error CS0411: The type arguments for method 'Program.AsCollection<T>(S<T>)' cannot be inferred from the usage. Try specifying the type arguments explicitly.
+                //         _ = AsCollection([1, null]);
+                Diagnostic(ErrorCode.ERR_CantInferMethTypeArgs, "AsCollection").WithArguments("Program.AsCollection<T>(S<T>)").WithLocation(17, 13),
+                // (18,23): error CS0117: 'collection literals' does not contain a definition for 'AsCollection'
+                //         _ = [1, null].AsCollection();
+                Diagnostic(ErrorCode.ERR_NoSuchMember, "AsCollection").WithArguments("collection literals", "AsCollection").WithLocation(18, 23));
         }
+
+        // PROTOTYPE: Test [].AsCollection() when AsCollection() is not generic (should work if parameter type is a collection type).
+
+        // PROTOTYPE: Test BindMemberAccessWithBoundLeft() for [...].F when F does not exist, or is not a method.
+        // PROTOTYPE: Test [...].F as a delegate.
+
+        // PROTOTYPE: Test [...].F<int>() as an invocation, and [...].F<int> as a delegate.
+
+        // PROTOTYPE: If we support natural type, then [1].ToString() will bind to Object.ToString() but [].ToString() will bind to
+        // the first extension method that takes a collection. Is that expected? Update proposal to make that clear.
 
         [Fact]
         public void TypeInference_10()

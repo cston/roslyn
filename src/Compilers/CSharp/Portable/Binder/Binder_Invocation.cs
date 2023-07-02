@@ -1595,6 +1595,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     var replaced = ReplaceTypeOrValueReceiver(value, useType, diagnostics);
                     return (value == replaced) ? q : q.Update(replaced, q.DefinedSymbol, q.Operation, q.Cast, q.Binder, q.UnoptimizedForm, q.Type);
 
+                case BoundKind.UnconvertedCollectionLiteralExpression:
+                    Debug.Assert(!useType);
+                    return receiver;
+
                 default:
                     return BindToNaturalType(receiver, diagnostics);
             }

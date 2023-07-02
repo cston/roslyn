@@ -6743,7 +6743,10 @@ namespace Microsoft.CodeAnalysis.CSharp
             Debug.Assert(node != null);
             Debug.Assert(boundLeft != null);
 
-            boundLeft = MakeMemberAccessValue(boundLeft, diagnostics);
+            if (boundLeft.Kind != BoundKind.UnconvertedCollectionLiteralExpression)
+            {
+                boundLeft = MakeMemberAccessValue(boundLeft, diagnostics);
+            }
 
             TypeSymbol leftType = boundLeft.Type;
 
@@ -6782,7 +6785,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                 return BadExpression(node, boundLeft);
             }
 
-            boundLeft = BindToNaturalType(boundLeft, diagnostics);
+            if (boundLeft.Kind != BoundKind.UnconvertedCollectionLiteralExpression)
+            {
+                boundLeft = BindToNaturalType(boundLeft, diagnostics);
+            }
+
             leftType = boundLeft.Type;
             var lookupResult = LookupResult.GetInstance();
             try
@@ -6846,6 +6853,20 @@ namespace Microsoft.CodeAnalysis.CSharp
                             // NOTE: This means that we won't get CheckValue diagnostics in error scenarios,
                             // but they would be cascading anyway.
                             return BindInstanceMemberAccess(node, right, boundLeft, rightName, rightArity, typeArgumentsSyntax, typeArguments, invoked, indexed, diagnostics);
+                        }
+                    case BoundKind.UnconvertedCollectionLiteralExpression:
+                        {
+                            return new BoundMethodGroup(
+                                node,
+                                typeArguments,
+                                rightName,
+                                methods: ImmutableArray<MethodSymbol>.Empty,
+                                lookupSymbolOpt: null,
+                                lookupError: null,
+                                flags: BoundMethodGroupFlags.SearchExtensionMethods,
+                                functionType: null,
+                                receiverOpt: boundLeft,
+                                resultKind: LookupResultKind.Empty);
                         }
                     default:
                         {

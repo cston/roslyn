@@ -1943,6 +1943,14 @@ namespace Microsoft.CodeAnalysis.CSharp
                 }
             }
 
+            if (sourceExpressionOpt?.Kind == BoundKind.UnconvertedCollectionLiteralExpression)
+            {
+                if ((GetCollectionLiteralTypeKind(Compilation, destination, out _) != CollectionLiteralTypeKind.None))
+                {
+                    return Conversion.CollectionLiteral;
+                }
+            }
+
             if ((object)sourceType != null)
             {
                 var tupleConversion = ClassifyTupleConversion(
@@ -1982,6 +1990,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ConversionKind.Identity:
                 case ConversionKind.Boxing:
                 case ConversionKind.ImplicitReference:
+                case ConversionKind.CollectionLiteral:
                     return true;
 
                 case ConversionKind.ImplicitTuple:
