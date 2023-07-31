@@ -10277,6 +10277,199 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                 Diagnostic(ErrorCode.ERR_BadAttributeArgument, "MyCollectionBuilder.GetName([1, 2, 3])").WithLocation(6, 49));
         }
 
+
+        [CombinatorialData]
+        [Theory]
+        public void ForEach_01([CombinatorialValues(TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (bool b in [false, true])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: targetFramework,
+                verify: Verification.Fails,
+                expectedOutput: IncludeExpectedOutput("False, True, "));
+            // PROTOTYPE: Should use inline array on .NET 8, not on .NET 7.
+            if (targetFramework == TargetFramework.Net80)
+            {
+                verifier.VerifyIL("Program.Main", """
+                    {
+                      // Code size       58 (0x3a)
+                      .maxstack  3
+                      .locals init (System.ReadOnlySpan<bool> V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  ldloca.s   V_0
+                      IL_0002:  ldsflda    "short <PrivateImplementationDetails>.B413F47D13EE2FE6C845B2EE141AF81DE858DF4EC549A58B7970BB96645BC8D2"
+                      IL_0007:  ldc.i4.2
+                      IL_0008:  call       "System.ReadOnlySpan<bool>..ctor(void*, int)"
+                      IL_000d:  ldc.i4.0
+                      IL_000e:  stloc.1
+                      IL_000f:  br.s       IL_002f
+                      IL_0011:  ldloca.s   V_0
+                      IL_0013:  ldloc.1
+                      IL_0014:  call       "ref readonly bool System.ReadOnlySpan<bool>.this[int].get"
+                      IL_0019:  ldind.u1
+                      IL_001a:  stloc.2
+                      IL_001b:  ldstr      "{0}, "
+                      IL_0020:  ldloc.2
+                      IL_0021:  box        "bool"
+                      IL_0026:  call       "void System.Console.Write(string, object)"
+                      IL_002b:  ldloc.1
+                      IL_002c:  ldc.i4.1
+                      IL_002d:  add
+                      IL_002e:  stloc.1
+                      IL_002f:  ldloc.1
+                      IL_0030:  ldloca.s   V_0
+                      IL_0032:  call       "int System.ReadOnlySpan<bool>.Length.get"
+                      IL_0037:  blt.s      IL_0011
+                      IL_0039:  ret
+                    }
+                    """);
+            }
+            else
+            {
+                verifier.VerifyIL("Program.Main", """
+                    {
+                      // Code size       58 (0x3a)
+                      .maxstack  3
+                      .locals init (System.ReadOnlySpan<bool> V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  ldloca.s   V_0
+                      IL_0002:  ldsflda    "short <PrivateImplementationDetails>.B413F47D13EE2FE6C845B2EE141AF81DE858DF4EC549A58B7970BB96645BC8D2"
+                      IL_0007:  ldc.i4.2
+                      IL_0008:  call       "System.ReadOnlySpan<bool>..ctor(void*, int)"
+                      IL_000d:  ldc.i4.0
+                      IL_000e:  stloc.1
+                      IL_000f:  br.s       IL_002f
+                      IL_0011:  ldloca.s   V_0
+                      IL_0013:  ldloc.1
+                      IL_0014:  call       "ref readonly bool System.ReadOnlySpan<bool>.this[int].get"
+                      IL_0019:  ldind.u1
+                      IL_001a:  stloc.2
+                      IL_001b:  ldstr      "{0}, "
+                      IL_0020:  ldloc.2
+                      IL_0021:  box        "bool"
+                      IL_0026:  call       "void System.Console.Write(string, object)"
+                      IL_002b:  ldloc.1
+                      IL_002c:  ldc.i4.1
+                      IL_002d:  add
+                      IL_002e:  stloc.1
+                      IL_002f:  ldloc.1
+                      IL_0030:  ldloca.s   V_0
+                      IL_0032:  call       "int System.ReadOnlySpan<bool>.Length.get"
+                      IL_0037:  blt.s      IL_0011
+                      IL_0039:  ret
+                    }
+                    """);
+            }
+        }
+
+        [CombinatorialData]
+        [Theory]
+        public void Spread_KnownElementType_01([CombinatorialValues(TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        F1().Report();
+                        F2().Report();
+                    }
+                    static int[] F1()
+                    {
+                        return [..[]];
+                    }
+                    static int?[] F2()
+                    {
+                        return [..[2]];
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                new[] { source, s_collectionExtensions },
+                targetFramework: targetFramework,
+                verify: Verification.Fails,
+                expectedOutput: IncludeExpectedOutput("[], [2], "));
+            verifier.VerifyIL("Program.F1", """
+                {
+                    ...
+                }
+                """);
+            // PROTOTYPE: Should use inline array on .NET 8 for F2, not on .NET 7.
+            if (targetFramework == TargetFramework.Net80)
+            {
+                verifier.VerifyIL("Program.F2", """
+                    {
+                        ...
+                    }
+                    """);
+            }
+            else
+            {
+                verifier.VerifyIL("Program.F2", """
+                    {
+                        ...
+                    }
+                    """);
+            }
+        }
+
+        [CombinatorialData]
+        [Theory]
+        public void Spread_KnownElementType_02([CombinatorialValues(TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        F(false, 1).Report();
+                        F(true, (object)2).Report();
+                    }
+                    static T[] F<T>(bool b, T x)
+                    {
+                        return [.. b ? [x] : []];
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                new[] { source, s_collectionExtensions },
+                targetFramework: targetFramework,
+                verify: Verification.Fails,
+                expectedOutput: IncludeExpectedOutput("[], [2], "));
+            // PROTOTYPE: Should use inline array on .NET 8, not on .NET 7.
+            if (targetFramework == TargetFramework.Net80)
+            {
+                verifier.VerifyIL("Program.F", """
+                    {
+                        ...
+                    }
+                    """);
+            }
+            else
+            {
+                verifier.VerifyIL("Program.F", """
+                    {
+                        ...
+                    }
+                    """);
+            }
+        }
+
         [ConditionalFact(typeof(DesktopOnly))]
         public void RestrictedTypes()
         {

@@ -239,9 +239,15 @@ namespace Microsoft.CodeAnalysis.CSharp
             return CheckValue(result, valueKind, diagnostics);
         }
 
-        internal BoundExpression BindRValueWithoutTargetType(ExpressionSyntax node, BindingDiagnosticBag diagnostics, bool reportNoTargetType = true)
+        // PROTOTYPE: Clean up elementTypeForCollectionExpressionsOnly.
+        internal BoundExpression BindRValueWithoutTargetType(ExpressionSyntax node, BindingDiagnosticBag diagnostics, bool reportNoTargetType = true, TypeWithAnnotations elementTypeForCollectionExpressionsOnly = default)
         {
-            return BindToNaturalType(BindValue(node, diagnostics, BindValueKind.RValue), diagnostics, reportNoTargetType);
+            var value = BindValue(node, diagnostics, BindValueKind.RValue);
+            if (value is BoundUnconvertedCollectionExpression collectionExpression && elementTypeForCollectionExpressionsOnly.HasType)
+            {
+                return BindImplicitCollectionCollectionExpression(collectionExpression, elementTypeForCollectionExpressionsOnly, diagnostics);
+            }
+            return BindToNaturalType(value, diagnostics, reportNoTargetType);
         }
 
         /// <summary>

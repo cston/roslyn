@@ -213,6 +213,52 @@ namespace Microsoft.CodeAnalysis.CSharp
             return new BoundExpressionStatement(_syntax, deconstruction);
         }
 
+        // PROTOTYPE: A duplicate copy of the binding that is done in the switch statement in BindForEachPartsWorker. Remove the duplication.
+        private TypeWithAnnotations BindIterationVariableType()
+        {
+            if (_syntax.Kind() != SyntaxKind.ForEachStatement)
+            {
+                return default;
+            }
+
+            var diagnostics = BindingDiagnosticBag.Discarded;
+
+            var node = (ForEachStatementSyntax)_syntax;
+
+            // If the type in syntax is "var", then the type should be set explicitly so that the
+            // Type property doesn't fail.
+
+            TypeSyntax typeSyntax = node.Type;
+
+            if (typeSyntax is ScopedTypeSyntax scopedType)
+            {
+                // Check for support for 'scoped'.
+                ModifierUtils.CheckScopedModifierAvailability(typeSyntax, scopedType.ScopedKeyword, diagnostics);
+                typeSyntax = scopedType.Type;
+            }
+
+            if (typeSyntax is RefTypeSyntax refType)
+            {
+                MessageID.IDS_FeatureRefForEach.CheckFeatureAvailability(diagnostics, typeSyntax);
+                typeSyntax = refType.Type;
+            }
+
+            bool isVar;
+            AliasSymbol alias;
+            TypeWithAnnotations declType = BindTypeOrVarKeyword(typeSyntax, diagnostics, out isVar, out alias);
+
+            if (isVar)
+            {
+                return default;
+            }
+            else
+            {
+                Debug.Assert(declType.HasType);
+            }
+
+            return declType;
+        }
+
         private BoundForEachStatement BindForEachPartsWorker(BindingDiagnosticBag diagnostics, Binder originalBinder)
         {
             if (IsAsync)
@@ -220,8 +266,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                 CheckFeatureAvailability(_syntax.AwaitKeyword, MessageID.IDS_FeatureAsyncStreams, diagnostics);
             }
 
+            var iterationVariableType_PROTOTYPE = BindIterationVariableType();
+
             // Use the right binder to avoid seeing iteration variable
-            BoundExpression collectionExpr = originalBinder.GetBinder(_syntax.Expression).BindRValueWithoutTargetType(_syntax.Expression, diagnostics);
+            BoundExpression collectionExpr = originalBinder.GetBinder(_syntax.Expression).BindRValueWithoutTargetType(_syntax.Expression, diagnostics, elementTypeForCollectionExpressionsOnly: iterationVariableType_PROTOTYPE);
 
             ForEachEnumeratorInfo.Builder builder;
             TypeWithAnnotations inferredType;

@@ -566,6 +566,25 @@ namespace Microsoft.CodeAnalysis.CSharp
                 builder: out _);
         }
 
+        /// <summary>
+        /// Bind a collection expression where the element type is known but the collection type
+        /// is not, and where the resulting collection instance is not directly observable.
+        /// For example, 'foreach (T t in [x, y, z]) { }' and '[.. b ? [x] : []]'. 
+        /// Since the collection is not observable, the compiler may optimize the representation.
+        /// </summary>
+        private BoundCollectionExpression BindImplicitCollectionCollectionExpression(
+            BoundUnconvertedCollectionExpression node,
+            TypeWithAnnotations elementType,
+            BindingDiagnosticBag diagnostics)
+        {
+            Debug.Assert(elementType.HasType);
+
+            // PROTOTYPE: Test missing type.
+            var collectionType = GetWellKnownType(WellKnownType.System_ReadOnlySpan_T, diagnostics, node.Syntax).Construct(ImmutableArray.Create(elementType));
+            // PROTOTYPE: We should use TypeWithAnnotations throughout these methods.
+            return BindArrayOrSpanCollectionExpression(node, collectionType, wasCompilerGenerated: false, CollectionExpressionTypeKind.ReadOnlySpan, elementType.Type, diagnostics);
+        }
+
         private BoundCollectionExpression BindArrayOrSpanCollectionExpression(
             BoundUnconvertedCollectionExpression node,
             TypeSymbol targetType,
