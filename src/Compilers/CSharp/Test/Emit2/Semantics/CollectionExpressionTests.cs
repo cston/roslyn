@@ -1196,6 +1196,130 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                 Diagnostic(ErrorCode.ERR_NameNotInContext, "Unknown1").WithArguments("Unknown1").WithLocation(6, 25));
         }
 
+        [WorkItem("https://github.com/dotnet/roslyn/issues/70238")]
+        [Fact]
+        public void OverloadResolution_ExactMatch_01()
+        {
+            string source = """
+                using System;
+                using System.Collections.Generic;
+
+                MyClass.MyMethod([$"one", $"two"]);
+
+                static class MyClass
+                {
+                    public static void MyMethod(IEnumerable<string> _)
+                    {
+                        Console.WriteLine("string");
+                    }
+                    public static void MyMethod(IEnumerable<IFormattable> _)
+                    {
+                        Console.WriteLine("IFormattable");
+                    }
+                }
+                """;
+            CompileAndVerify(source, expectedOutput: "string");
+        }
+
+        // PROTOTYPE: What is the expected behavior when the containing collection type is distinct? What about distinct and one is a span and the other is an array or array interface?
+        // PROTOTYPE: Test exact match where at least one of the elements doesn't contribute a type: string[] with ["hello", "world", null] for instance.
+
+        [WorkItem("https://github.com/dotnet/roslyn/issues/70238")]
+        [Theory]
+        [InlineData("""[$"one", $"two"]""", "IEnumerable<string>", "IEnumerable<IFormattable>", "IEnumerable<string>")]
+        [InlineData("""["one", "two"]""", "IEnumerable<string>", "IEnumerable<object>", "IEnumerable<string>")]
+        [InlineData(""" $"one", $"two" """, "params string[]", "params IFormattable[]", "params string[]")]
+        [InlineData("""[$"one", $"two"]""", "params string[]", "params IFormattable[]", "params string[]")]
+        [InlineData("[1, 2, 3]", "int[]", "int?[]", "int[]")]
+        [InlineData("[1, 2, 3]", "int[]", "object[]", "int[]")]
+        [InlineData("[1, 2, 3]", "List<int>", "int?[]", "List<int>")]
+        [InlineData("[1, 2, 3]", "int[]", "List<int?>", "int[]")]
+        [InlineData(" 1, 2, 3 ", "params int[]", "params int?[]", "params int[]")]
+        [InlineData("[1, 2, 3]", "params int[]", "params int?[]", "params int[]")]
+        public void OverloadResolution_ExactMatch_02(string expression, string parameterType1, string parameterType2, string expectedParameterType)
+        {
+            string source = $$"""
+                using System;
+                using System.Collections.Generic;
+
+                MyClass.M1({{expression}});
+                MyClass.M2({{expression}});
+
+                static class MyClass
+                {
+                    public static void M1({{parameterType1}} _) { Console.WriteLine("M1({{parameterType1}})"); }
+                    public static void M1({{parameterType2}} _) { Console.WriteLine("M1({{parameterType2}})"); }
+                    public static void M2({{parameterType2}} _) { Console.WriteLine("M2({{parameterType2}})"); }
+                    public static void M2({{parameterType1}} _) { Console.WriteLine("M2({{parameterType1}})"); }
+                }
+                """;
+            CompileAndVerify(
+                source,
+                expectedOutput: $$"""
+                    M1({{expectedParameterType}})
+                    M2({{expectedParameterType}})
+                    """);
+        }
+
+        [WorkItem("https://github.com/dotnet/roslyn/issues/70238")]
+        [Theory]
+        [InlineData("[1, 2, 3]", "Span<int>", "int?[]", "Span<int>")]
+        [InlineData("[1, 2, 3]", "int[]", "Span<int?>", "int[]")]
+        [InlineData("[1, 2, 3]", "Span<int>", "ReadOnlySpan<int?>", "Span<int>")]
+        [InlineData("[1, 2, 3]", "ReadOnlySpan<int>", "Span<int?>", "ReadOnlySpan<int>")]
+        [InlineData("[1, 2, 3]", "Span<int>", "ReadOnlySpan<object>", "Span<int>")]
+        [InlineData("[1, 2, 3]", "ReadOnlySpan<int>", "Span<object>", "ReadOnlySpan<int>")]
+        public void OverloadResolution_ExactMatch_03(string expression, string parameterType1, string parameterType2, string expectedParameterType)
+        {
+            string source = $$"""
+                using System;
+                using System.Collections.Generic;
+
+                MyClass.M1({{expression}});
+                MyClass.M2({{expression}});
+
+                static class MyClass
+                {
+                    public static void M1({{parameterType1}} _) { Console.WriteLine("M1({{parameterType1}})"); }
+                    public static void M1({{parameterType2}} _) { Console.WriteLine("M1({{parameterType2}})"); }
+                    public static void M2({{parameterType2}} _) { Console.WriteLine("M2({{parameterType2}})"); }
+                    public static void M2({{parameterType1}} _) { Console.WriteLine("M2({{parameterType1}})"); }
+                }
+                """;
+            CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                expectedOutput: IncludeExpectedOutput($$"""
+                    M1({{expectedParameterType}})
+                    M2({{expectedParameterType}})
+                    """));
+        }
+
+        [WorkItem("https://github.com/dotnet/roslyn/issues/70238")]
+        [Fact]
+        public void OverloadResolution_ExactMatch_PROTOTYPE_01() // PROTOTYPE: Remove this test.
+        {
+            string source = """
+                using System;
+
+                MyClass.MyMethod(($"one", $"two")); // Calls the string tuple overload
+                MyClass.MyMethod(($"one", null)); // ambiguous
+
+                static class MyClass
+                {
+                    public static void MyMethod((string, string) _)
+                    {
+                        Console.WriteLine("string");
+                    }
+                    public static void MyMethod((IFormattable, IFormattable) _)
+                    {
+                        Console.WriteLine("IFormattable");
+                    }
+                }
+                """;
+            CompileAndVerify(source, expectedOutput: "string");
+        }
+
         private const string example_RefStructCollection = """
                 using System;
                 using System.Collections.Generic;
