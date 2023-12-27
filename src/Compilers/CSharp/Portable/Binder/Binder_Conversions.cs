@@ -923,6 +923,9 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         private MethodSymbol? GetCollectionBuilderMethod(
             NamedTypeSymbol targetType,
+            // PROTOTYPE: Element (actually iteration) type should be optional, and if supplied there should be
+            // an implicit conversion (perhaps identity, implicit reference, or implicit boxing conversion) from
+            // the parameter element type to the iteration type.
             TypeSymbol elementTypeOriginalDefinition,
             TypeSymbol? builderType,
             string? methodName,
@@ -985,10 +988,11 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 var spanTypeArg = ((NamedTypeSymbol)methodWithTargetTypeParameters.Parameters[0].Type).TypeArgumentsWithAnnotationsNoUseSiteDiagnostics[0].Type;
                 var conversion = Conversions.ClassifyImplicitConversionFromType(elementTypeOriginalDefinition, spanTypeArg, ref candidateUseSiteInfo);
-                if (!conversion.IsIdentity)
-                {
-                    continue;
-                }
+                // PROTOTYPE:
+                //if (!conversion.IsIdentity)
+                //{
+                //    continue;
+                //}
 
                 conversion = Conversions.ClassifyImplicitConversionFromType(methodWithTargetTypeParameters.ReturnType, targetType.OriginalDefinition, ref candidateUseSiteInfo);
                 switch (conversion.Kind)

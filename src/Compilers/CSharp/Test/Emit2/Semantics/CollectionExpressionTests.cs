@@ -12633,6 +12633,16 @@ partial class Program
                 Diagnostic(ErrorCode.ERR_CollectionBuilderAttributeMethodNotFound, "[null]").WithArguments("Create", "object", "MyCollection").WithLocation(21, 26));
         }
 
+        // PROTOTYPE: Are we testing with a collection type that doesn't implement IEnumerable or GetEnumerator() pattern?
+
+        // PROTOTYPE: Test with an implicit conversion from parameter element type to iteration type and where
+        // the parameter type is not simply T.
+        // class MyCollection<T> : IEnumerable<object> { ... }
+        // class MyCollectionBuilder
+        // {
+        //     public static MyCollection<T> Create(ReadOnlySpan<Wrapper<T>> items) { ... }
+        // }
+
         [CombinatorialData]
         [Theory]
         public void CollectionBuilder_Dictionary(bool useCompilationReference)
@@ -14117,7 +14127,8 @@ partial class Program
         public void CollectionBuilder_UnexpectedSignature_01(
             [CombinatorialValues(
                 "public static MyCollection<int> Create(ReadOnlySpan<int> items) => default;", // constructed parameter and return types
-                "public static MyCollection<T> Create<T>(ReadOnlySpan<int> items) => default;", // constructed parameter type
+                // PROTOTYPE:
+                //"public static MyCollection<T> Create<T>(ReadOnlySpan<int> items) => default;", // constructed parameter type
                 "public static MyCollection<int> Create<T>(ReadOnlySpan<T> items) => default;", // constructed return type
                 "public static MyCollection<T> Create<T>(ReadOnlySpan<T> items, int index = 0) => default;", // optional parameter
                 "public static MyCollection<T> Create<T>() => default;", // no parameters
