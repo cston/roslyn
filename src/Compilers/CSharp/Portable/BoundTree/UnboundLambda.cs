@@ -490,10 +490,197 @@ namespace Microsoft.CodeAnalysis.CSharp
     /// </summary>
     internal sealed class LambdaBindingData
     {
+        internal LambdaBindingData(int depth = 0)
+        {
+            LambdaBindingCount = 0;
+            UnboundLambdaStateCount = 0;
+            LambdaBindingCountPerLevel = new int[depth];
+            UnboundLambdaStateCountPerLevel = new int[depth];
+        }
+
         /// <summary>
         /// Number of lambdas bound.
         /// </summary>
         internal int LambdaBindingCount;
+
+        /// <summary>
+        /// Number of lambdas bound per level of nesting.
+        /// </summary>
+        internal readonly int[] LambdaBindingCountPerLevel;
+
+        /// <summary>
+        /// Number of unbound lambdas.
+        /// </summary>
+        internal int UnboundLambdaStateCount;
+
+        /// <summary>
+        /// Number of unbound lambdas per level of nesting.
+        /// </summary>
+        internal readonly int[] UnboundLambdaStateCountPerLevel;
+
+        public override string ToString()
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendFormat("BoundLambdas: {0}, UnboundLambdaStates: {1}", LambdaBindingCount, UnboundLambdaStateCount);
+            for (int i = 0; i < LambdaBindingCountPerLevel.Length; i++)
+            {
+                builder.AppendFormat(", ({0}, {1})", LambdaBindingCountPerLevel[i], UnboundLambdaStateCountPerLevel[i]);
+            }
+            return builder.ToString();
+        }
+    }
+
+    // PROTOTYPE: Do we need this wrapper class or could we use the underlying dictionary directly?
+    internal sealed class BoundLambdaCache
+    {
+        // PROTOTYPE: Test same delegate type used for two unrelated lambdas in the same containing method.
+        // PROTOTYPE: Test IsExpressionLambda.
+        [DebuggerDisplay("{GetDebuggerDisplay(), nq}")]
+        internal readonly struct Key : IEquatable<Key>
+        {
+            internal Key(SyntaxNode syntax, ImmutableArray<TypeSymbol?> parameterTypes, NamedTypeSymbol delegateType, bool isExpressionLambda)
+            {
+                Syntax = syntax;
+                ParameterTypes = parameterTypes;
+                DelegateType = delegateType;
+                IsExpressionLambda = isExpressionLambda;
+            }
+
+            internal readonly SyntaxNode Syntax;
+            internal readonly ImmutableArray<TypeSymbol?> ParameterTypes;
+            // PROTOTYPE: Why are we using parameter types for containing lambdas,
+            // but delegate type for the current lambda?
+            internal readonly NamedTypeSymbol DelegateType;
+            internal readonly bool IsExpressionLambda;
+
+            internal Key Update(BitVector parametersReferenced)
+            {
+                return new Key(Syntax, ClearUnreferencedParameterTypes(parametersReferenced, ParameterTypes), DelegateType, IsExpressionLambda);
+            }
+
+            private static ImmutableArray<TypeSymbol?> ClearUnreferencedParameterTypes(BitVector parametersReferenced, ImmutableArray<TypeSymbol?> parameterTypes)
+            {
+                Debug.Assert(parametersReferenced.Capacity == parameterTypes.Length);
+                int n = parameterTypes.Length;
+                bool all = true;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!parametersReferenced[i])
+                    {
+                        all = false;
+                        break;
+                    }
+                }
+                if (all)
+                {
+                    return parameterTypes;
+                }
+                var builder = ArrayBuilder<TypeSymbol?>.GetInstance(n);
+                for (int i = 0; i < n; i++)
+                {
+                    builder.Add(parametersReferenced[i] ? parameterTypes[i] : null);
+                }
+                return builder.ToImmutableAndFree();
+            }
+
+            public bool Equals(Key other)
+            {
+                return Syntax == other.Syntax &&
+                    ParameterTypes.SequenceEqual(other.ParameterTypes) &&
+                    DelegateType.Equals(other.DelegateType) &&
+                    IsExpressionLambda == other.IsExpressionLambda;
+            }
+
+            public override bool Equals([NotNullWhen(true)] object? obj)
+            {
+                throw ExceptionUtilities.Unreachable();
+            }
+
+            public override int GetHashCode()
+            {
+                return Hash.Combine(
+                    Syntax.GetHashCode(),
+                    Hash.Combine(
+                        Hash.CombineValues(ParameterTypes),
+                        Hash.Combine(
+                            DelegateType.GetHashCode(),
+                            IsExpressionLambda.GetHashCode())));
+            }
+
+            internal string GetDebuggerDisplay()
+            {
+                var builder = new System.Text.StringBuilder();
+                foreach (var parameterType in ParameterTypes)
+                {
+                    builder.Append(parameterType is null ? "_" : parameterType.ToDisplayString(SymbolDisplayFormat.TestFormat));
+                    builder.Append(", ");
+                }
+                builder.Append(DelegateType.ToDisplayString(SymbolDisplayFormat.TestFormat));
+                return builder.ToString();
+            }
+        }
+
+        // PROTOTYPE: See previous _bindingCache which was explicitly not a ConcurrentDictionary
+        // "which has a large default size, but this cache is normally small." Do we need to revisit that?
+        private ImmutableDictionary<SyntaxNode, BitVector> _parametersReferencedCache;
+        private ImmutableDictionary<Key, BoundLambda> _bindingCache;
+
+        internal BoundLambdaCache()
+        {
+            _parametersReferencedCache = ImmutableDictionary<SyntaxNode, BitVector>.Empty;
+            _bindingCache = ImmutableDictionary<Key, BoundLambda>.Empty;
+        }
+
+        internal bool TryGetParametersReferenced(SyntaxNode syntax, out BitVector parametersReferenced)
+        {
+            return _parametersReferencedCache.TryGetValue(syntax, out parametersReferenced);
+        }
+
+        internal BitVector GetOrAddParametersReferenced(SyntaxNode syntax, BitVector parametersReferenced)
+        {
+            var result = ImmutableInterlocked.GetOrAdd(ref _parametersReferencedCache, syntax, parametersReferenced);
+            Debug.Assert(result.Equals(parametersReferenced));
+            return result;
+        }
+
+        internal bool TryGetLambda(Key key, [NotNullWhen(true)] out BoundLambda? lambda)
+        {
+#if DEBUG
+            Debug.Assert(IsValidKey(key));
+#endif
+            return _bindingCache.TryGetValue(key, out lambda);
+        }
+
+        internal BoundLambda GetOrAddLambda(Key key, BoundLambda lambda)
+        {
+#if DEBUG
+            Debug.Assert(IsValidKey(key));
+#endif
+            return ImmutableInterlocked.GetOrAdd(ref _bindingCache, key, lambda);
+        }
+
+#if DEBUG
+        private bool IsValidKey(Key key)
+        {
+            if (!_parametersReferencedCache.TryGetValue(key.Syntax, out BitVector bits))
+            {
+                return false;
+            }
+            var parameterTypes = key.ParameterTypes;
+            if (bits.Capacity != parameterTypes.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < parameterTypes.Length; i++)
+            {
+                if (bits[i] != (parameterTypes[i] is { }))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+#endif
     }
 
     internal abstract class UnboundLambdaState
@@ -504,7 +691,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         [PerformanceSensitive(
             "https://github.com/dotnet/roslyn/issues/23582",
             Constraint = "Avoid " + nameof(ConcurrentDictionary<(NamedTypeSymbol, bool), BoundLambda>) + " which has a large default size, but this cache is normally small.")]
-        private ImmutableDictionary<(NamedTypeSymbol Type, bool IsExpressionLambda), BoundLambda>? _bindingCache;
+        private ImmutableDictionary<(NamedTypeSymbol Type, bool IsExpressionLambda), BoundLambda>? _bindingCache; // PROTOTYPE: Remove.
 
         [PerformanceSensitive(
             "https://github.com/dotnet/roslyn/issues/23582",
@@ -517,6 +704,16 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             Debug.Assert(binder != null);
             Debug.Assert(binder.ContainingMemberOrLambda != null);
+
+            if (binder.Compilation.TestOnlyCompilationData is LambdaBindingData data)
+            {
+                Interlocked.Increment(ref data.UnboundLambdaStateCount);
+                int depth = GetContainingLambdaCount(binder);
+                if (data.UnboundLambdaStateCountPerLevel.Length > depth)
+                {
+                    Interlocked.Increment(ref data.UnboundLambdaStateCountPerLevel[depth]);
+                }
+            }
 
             if (includeCache)
             {
@@ -567,11 +764,19 @@ namespace Microsoft.CodeAnalysis.CSharp
         public abstract ScopedKind DeclaredScope(int index);
         public abstract ParameterSyntax? ParameterSyntax(int i);
 
+        // PROTOTYPE: There are three distinct callers of this method, but only one is using
+        // the BoundLambdaCache. Does that mean we have two other ways to bind the
+        // previous way, with potentially duplicated bindings?
         protected BoundBlock BindLambdaBody(LambdaSymbol lambdaSymbol, Binder lambdaBodyBinder, BindingDiagnosticBag diagnostics)
         {
             if (lambdaSymbol.DeclaringCompilation?.TestOnlyCompilationData is LambdaBindingData data)
             {
                 Interlocked.Increment(ref data.LambdaBindingCount);
+                int depth = GetContainingLambdaCount(Binder);
+                if (data.LambdaBindingCountPerLevel.Length > depth)
+                {
+                    Interlocked.Increment(ref data.LambdaBindingCountPerLevel[depth]);
+                }
             }
 
             return BindLambdaBodyCore(lambdaSymbol, lambdaBodyBinder, diagnostics);
@@ -595,18 +800,167 @@ namespace Microsoft.CodeAnalysis.CSharp
             this.Binder.GenerateAnonymousFunctionConversionError(diagnostics, _unboundLambda.Syntax, _unboundLambda, targetType);
         }
 
+        // PROTOTYPE: Remove this.
+        internal static bool UsePrevious = false;
+
+        private static bool TryGetLambda(Binder binder, [NotNullWhen(true)] out LambdaSymbol? lambda)
+        {
+            if (binder is WithLambdaParametersBinder)
+            {
+                lambda = (LambdaSymbol?)binder.ContainingMemberOrLambda;
+                Debug.Assert(lambda is { });
+                return true;
+            }
+            lambda = null;
+            return false;
+        }
+
+        private static int GetContainingLambdaCount(Binder? binder)
+        {
+            int depth = 0;
+            for (; binder is { }; binder = binder.Next)
+            {
+                if (TryGetLambda(binder, out _))
+                {
+                    depth++;
+                }
+            }
+            return depth;
+        }
+
+        private static void GetParametersFromImplicitlyTypedContainingLambdas(Binder binder, ArrayBuilder<ParameterSymbol> parameters)
+        {
+            var next = binder.Next;
+            if (next is { })
+            {
+                GetParametersFromImplicitlyTypedContainingLambdas(next, parameters);
+            }
+            if (TryGetLambda(binder, out var lambda))
+            {
+                // PROTOTYPE: We only need parameter types from implicitly-typed lambdas.
+                parameters.AddRange(lambda.Parameters);
+            }
+        }
+
         // Returns the inferred return type, or null if none can be inferred.
         public BoundLambda Bind(NamedTypeSymbol delegateType, bool isTargetExpressionTree)
         {
             bool inExpressionTree = Binder.InExpressionTree || isTargetExpressionTree;
 
-            if (!_bindingCache!.TryGetValue((delegateType, inExpressionTree), out BoundLambda? result))
+            if (UsePrevious)
             {
-                result = ReallyBind(delegateType, inExpressionTree);
-                result = ImmutableInterlocked.GetOrAdd(ref _bindingCache, (delegateType, inExpressionTree), result);
+                if (!_bindingCache!.TryGetValue((delegateType, inExpressionTree), out BoundLambda? result))
+                {
+                    Console.WriteLine(delegateType.ToDisplayString(SymbolDisplayFormat.TestFormat));
+                    result = ReallyBind(delegateType, inExpressionTree);
+                    result = ImmutableInterlocked.GetOrAdd(ref _bindingCache, (delegateType, inExpressionTree), result);
+                }
+
+                return result;
+            }
+            else
+            {
+                if (_bindingCache is null)
+                {
+                    return ReallyBind(delegateType, inExpressionTree);
+                }
+
+                // Include any parameter types from implicitly-typed containing lambdas since this lambda
+                // may depend on those types. We don't include the return types of containing lambdas
+                // since the return types of containing lambdas cannot be referenced in this lambda.
+                var parametersBuilder = ArrayBuilder<ParameterSymbol>.GetInstance();
+                GetParametersFromImplicitlyTypedContainingLambdas(Binder, parametersBuilder);
+
+                // PROTOTYPE: We're allocating an array for every key, even for lookup.
+                var syntax = UnboundLambda.Syntax;
+                var key = new BoundLambdaCache.Key(syntax, parametersBuilder.SelectAsArray(p => (TypeSymbol?)p.Type), delegateType, inExpressionTree);
+                var cache = Binder.BoundLambdaCache;
+                Debug.Assert(cache is { });
+
+                BoundLambda? result = null;
+                bool hasParametersReferenced = cache.TryGetParametersReferenced(syntax, out BitVector parametersReferenced);
+
+                if (hasParametersReferenced)
+                {
+                    key = key.Update(parametersReferenced);
+                    cache.TryGetLambda(key, out result);
+                }
+
+                if (result is null)
+                {
+                    result = ReallyBind(delegateType, inExpressionTree);
+                    if (!hasParametersReferenced)
+                    {
+                        parametersReferenced = ParameterReferencesVisitor.GetParameterReferences(result.Body, parametersBuilder);
+                        cache.GetOrAddParametersReferenced(syntax, parametersReferenced);
+                        key = key.Update(parametersReferenced);
+                    }
+
+                    result = cache.GetOrAddLambda(key, result);
+                }
+
+                parametersBuilder.Free();
+                return result;
+            }
+        }
+
+        //private static WithLambdaParametersBinder? GetContainingLambdaBinder(Binder binder)
+        //{
+        //    while (true)
+        //    {
+        //        if (binder is WithLambdaParametersBinder withParameters)
+        //        {
+        //            return withParameters;
+        //        }
+        //        var next = binder.Next;
+        //        if (next is null)
+        //        {
+        //            return null;
+        //        }
+        //        binder = next;
+        //    }
+        //}
+
+        private sealed class ParameterReferencesVisitor : BoundTreeWalker
+        {
+            private readonly HashSet<ParameterSymbol> _parametersReferenced;
+
+            internal static BitVector GetParameterReferences(BoundBlock block, ArrayBuilder<ParameterSymbol> parameters)
+            {
+                if (parameters.Count == 0)
+                {
+                    return BitVector.Empty;
+                }
+
+                var parametersReferenced = PooledHashSet<ParameterSymbol>.GetInstance();
+                var visitor = new ParameterReferencesVisitor(parametersReferenced);
+                visitor.Visit(block);
+
+                var bits = BitVector.Create(parameters.Count);
+                for (int i = 0; i < parameters.Count; i++)
+                {
+                    bits[i] = parametersReferenced.Contains(parameters[i]);
+                }
+                parametersReferenced.Free();
+
+                return bits;
             }
 
-            return result;
+            private ParameterReferencesVisitor(HashSet<ParameterSymbol> parametersReferenced)
+            {
+                _parametersReferenced = parametersReferenced;
+            }
+
+            public override BoundNode? VisitParameter(BoundParameter node)
+            {
+                _parametersReferenced.Add(node.ParameterSymbol);
+                return null;
+            }
+
+            protected override BoundExpression? VisitExpressionWithoutStackGuard(BoundExpression node)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         internal IEnumerable<TypeSymbol> InferredReturnTypes()

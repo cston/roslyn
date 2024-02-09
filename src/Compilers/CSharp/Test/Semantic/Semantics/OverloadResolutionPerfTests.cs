@@ -383,6 +383,180 @@ class Program
             comp.VerifyDiagnostics();
         }
 
+        [Fact]
+        public void NestedLambdas_03()
+        {
+            var source = """
+                #pragma warning disable 649
+                using System.Collections.Generic;
+                using System.Linq;
+                class Container
+                {
+                    public IEnumerable<Container> Items;
+                    public int Value;
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        var list = new List<Container>();
+                        _ = list.Sum(
+                            a => a.Value + a.Items.Sum(
+                                b => b.Value + b.Items.Sum(
+                                    c => c.Value)));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source,
+                parseOptions: TestOptions.RegularDefault.WithFeature("run-nullable-analysis", "never"), // PROTOTYPE: Assert failure in NullableWalker.Variables.CreateNestedMethodScope() without this.
+                options: TestOptions.ReleaseExe);
+            var data = new LambdaBindingData(depth: 3);
+            comp.TestOnlyCompilationData = data;
+            var diagnostics = comp.GetDiagnostics();
+            diagnostics.Verify();
+            // PROTOTYPE: Increase number of levels deep. 11^7 == 19M for instance.
+            // PROTOTYPE: Investigate why the value is 63 rather than 33 = 11 + 11 + 11
+            // Previously: BoundLambdas: 1463, UnboundLambdaStates: 1729, (11, 13), (121, 143), (1331, 1573)
+            // 1463 = N^3 + N^2 + N, where N == 11 (overloads)
+            Assert.Equal("BoundLambdas: 63, UnboundLambdaStates: 129, (11, 13), (21, 43), (31, 73)", data.ToString());
+            // PROTOTYPE: Verify IL for 3 lambdas.
+        }
+
+        // Nested lambda depends on parameter type from containing lambda.
+        // PROTOTYPE: No effect of removing containing parameter types!
+        [Fact]
+        public void NestedLambdas_04()
+        {
+            var source = """
+                using System;
+                class Program
+                {
+                    static int F(int x, Func<int, int> f) => f(x);
+                    static long F(long x, Func<long, long> f) => throw null;
+                    static double F(double x, Func<double, double> f) => throw null;
+                    static int? F(int? x, Func<int?, int?> f) => throw null;
+                    static long? F(long? x, Func<long?, long?> f) => throw null;
+                    static double? F(double? x, Func<double?, double?> f) => throw null;
+
+                    static void Main()
+                    {
+                        var x = F(42,
+                            a => F(a,
+                                b => F(a,
+                                    c => c)));
+                        Console.WriteLine(x);
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.ReleaseExe);
+            var data = new LambdaBindingData(depth: 3);
+            comp.TestOnlyCompilationData = data;
+            var diagnostics = comp.GetDiagnostics();
+            diagnostics.Verify();
+            // PROTOTYPE: Why is UnboundLambdaStates high?
+            // Previously: BoundLambdas: 636, UnboundLambdaStates: 802, (12, 14), (70, 94), (554, 694)
+            Assert.Equal("BoundLambdas: 277, UnboundLambdaStates: 407, (12, 14), (52, 76), (213, 317)", data.ToString());
+            CompileAndVerify(comp, expectedOutput: "42");
+        }
+
+        [Fact]
+        public void NestedLambdas_05()
+        {
+            var source = """
+                using System;
+                class Program
+                {
+                    static void F1(Func<int, long> f) { Console.Write(1); f(1); }
+                    static void F1(Func<long, long> f) { Console.Write(2); f(2); }
+                    static void F2(int x, Func<int, object> f) { Console.Write(3); f(x); }
+                    static void F2(long x, Func<long, long> f) { Console.Write(4); f(x); }
+                    static void Main()
+                    {
+                        F1(a => { F2(a, b => b); return a; });
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source,
+                parseOptions: TestOptions.RegularDefault.WithFeature("run-nullable-analysis", "never"), // PROTOTYPE: Assert failure in NullableWalker.Variables.CreateNestedMethodScope() without this.
+                options: TestOptions.ReleaseExe);
+            var data = new LambdaBindingData(depth: 2);
+            comp.TestOnlyCompilationData = data;
+            var diagnostics = comp.GetDiagnostics();
+            diagnostics.Verify();
+            // PROTOTYPE: Why is UnboundLambdaStates high?
+            // Previously: BoundLambdas: 14, UnboundLambdaStates: 24, (4, 6), (10, 18)
+            Assert.Equal("BoundLambdas: 10, UnboundLambdaStates: 20, (4, 6), (6, 14)", data.ToString());
+            CompileAndVerify(comp, expectedOutput: "24");
+            // PROTOTYPE: Verify IL for innermost lambda.
+        }
+
+        // Nested lambda depends on parameter type from containing lambda.
+        [Fact]
+        public void NestedLambdas_06()
+        {
+            var source = """
+                using System;
+                class Program
+                {
+                    static long F1(Func<int, long> f) { Console.Write(1); return f(1); }
+                    static long F1(Func<long, long> f) { Console.Write(2); return f(2); }
+                    static void F2(int x, Func<int, object> f) { Console.Write(3); f(x); }
+                    static void F2(long x, Func<long, long> f) { Console.Write(4); f(x); }
+
+                    static long _f =  F1(a => { F2(a, _ => a); return a; });
+
+                    static void Main()
+                    {
+                        _ = _f;
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.ReleaseExe);
+            var data = new LambdaBindingData(depth: 2);
+            comp.TestOnlyCompilationData = data;
+            var diagnostics = comp.GetDiagnostics();
+            diagnostics.Verify();
+            // PROTOTYPE: How did the numbers increase over previous approach?
+            // Previously: BoundLambdas: 7, UnboundLambdaStates: 13, (2, 4), (5, 9)
+            Assert.Equal("BoundLambdas: 8, UnboundLambdaStates: 14, (2, 4), (6, 10)", data.ToString());
+            CompileAndVerify(comp, expectedOutput: "24");
+            // PROTOTYPE: Verify IL for innermost lambda.
+        }
+
+        // As above, but from primary constructor.
+        [Fact]
+        public void NestedLambdas_07()
+        {
+            var source = """
+                using System;
+                class Program(long x)
+                {
+                    static long F1(Func<int, long> f) { Console.Write(1); return f(1); }
+                    static long F1(Func<long, long> f) { Console.Write(2); return f(2); }
+                    static void F2(int x, Func<int, object> f) { Console.Write(3); f(x); }
+                    static void F2(long x, Func<long, long> f) { Console.Write(4); f(x); }
+
+                    long _f =  F1(a => { F2(a, _ => a); return x + a; });
+
+                    static void Main()
+                    {
+                        var p = new Program(5);
+                        Console.Write(p._f);
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.ReleaseExe);
+            var data = new LambdaBindingData(depth: 2);
+            comp.TestOnlyCompilationData = data;
+            var diagnostics = comp.GetDiagnostics();
+            diagnostics.Verify();
+            // PROTOTYPE: How did the numbers increase over previous approach?
+            // Previously: BoundLambdas: 7, UnboundLambdaStates: 13, (2, 4), (5, 9)
+            Assert.Equal("BoundLambdas: 8, UnboundLambdaStates: 14, (2, 4), (6, 10)", data.ToString());
+            CompileAndVerify(comp, expectedOutput: "247");
+            // PROTOTYPE: Verify IL for innermost lambda.
+        }
+
         [ConditionalFact(typeof(NoIOperationValidation), Reason = "Timeouts")]
         [WorkItem(48886, "https://github.com/dotnet/roslyn/issues/48886")]
         public void ArrayInitializationAnonymousTypes()

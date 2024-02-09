@@ -1773,7 +1773,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     BoundNode methodBody = bodyBinder.BindMethodBody(syntaxNode, diagnostics);
 
 #if DEBUG
-                    assertBindIdentifierTargets(inMethodBinder, identifierMap, methodBody, diagnostics);
+                    // PROTOTYPE: InMethodBinder.BoundLambdaCache may have been populated with a previous binding of this
+                    // method body. (When calling Compilation.GetDiagnostics(), then CompileAndVerify(comp). See NestedLambdas_05.)
+                    // In that case we won't re-bind lambdas and as a result, won't update identifierMap.
+                    //assertBindIdentifierTargets(inMethodBinder, identifierMap, methodBody, diagnostics);
 #endif
 
                     BoundNode methodBodyForSemanticModel = methodBody;

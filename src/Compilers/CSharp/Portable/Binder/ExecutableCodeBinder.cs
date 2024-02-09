@@ -5,11 +5,7 @@
 #nullable disable
 
 using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
 using System;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Threading;
 
@@ -43,6 +39,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             _memberSymbol = memberSymbol;
             _root = root;
+            BoundLambdaCache = next.BoundLambdaCache ?? new BoundLambdaCache();
         }
 
         internal override Symbol ContainingMemberOrLambda
@@ -54,6 +51,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             => true;
 
         internal Symbol MemberSymbol { get { return _memberSymbol; } }
+
+        internal override BoundLambdaCache BoundLambdaCache { get; }
 
         internal override Binder GetBinder(SyntaxNode node)
         {

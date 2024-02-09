@@ -493,6 +493,15 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        internal virtual BoundLambdaCache? BoundLambdaCache
+        {
+            get
+            {
+                RoslynDebug.Assert(Next is object);
+                return this.Next.BoundLambdaCache;
+            }
+        }
+
         private Conversions? _lazyConversions;
         internal Conversions Conversions
         {
