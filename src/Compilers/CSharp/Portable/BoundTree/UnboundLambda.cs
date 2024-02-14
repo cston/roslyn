@@ -415,6 +415,10 @@ namespace Microsoft.CodeAnalysis.CSharp
             data.SetUnboundLambda(lambda);
             functionType?.SetExpression(lambda.WithNoCache());
 
+            var cache = binder.BoundLambdaCache;
+            Debug.Assert(cache is { });
+            cache.IncrementCounts(syntax, 0, 1);
+
             return lambda;
         }
 
@@ -625,9 +629,21 @@ namespace Microsoft.CodeAnalysis.CSharp
         private ImmutableDictionary<SyntaxNode, BitVector> _parametersReferencedCache;
         private ImmutableDictionary<Key, BoundLambda> _bindingCache;
 
+        // PROTOTYPE: Combine with _parametersReferencedCache dictionary.
+        private ImmutableDictionary<SyntaxNode, (int, int)> _counts;
+
+        internal void ForEachLambda(Action<SyntaxNode, int, int> action)
+        {
+            foreach (var (key, value) in _counts)
+            {
+                action(key, value.Item1, value.Item2);
+            }
+        }
+
         internal BoundLambdaCache()
         {
             _parametersReferencedCache = ImmutableDictionary<SyntaxNode, BitVector>.Empty;
+            _counts = ImmutableDictionary<SyntaxNode, (int, int)>.Empty;
             _bindingCache = ImmutableDictionary<Key, BoundLambda>.Empty;
         }
 
@@ -641,6 +657,15 @@ namespace Microsoft.CodeAnalysis.CSharp
             var result = ImmutableInterlocked.GetOrAdd(ref _parametersReferencedCache, syntax, parametersReferenced);
             Debug.Assert(result.Equals(parametersReferenced));
             return result;
+        }
+
+        internal void IncrementCounts(SyntaxNode syntax, int lambdaBindingCount, int unboundLambdaStateCount)
+        {
+            ImmutableInterlocked.AddOrUpdate(
+                ref _counts,
+                syntax,
+                _ => (lambdaBindingCount, unboundLambdaStateCount),
+                (_, value) => (value.Item1 + lambdaBindingCount, value.Item2 + unboundLambdaStateCount));
         }
 
         internal bool TryGetLambda(Key key, [NotNullWhen(true)] out BoundLambda? lambda)
@@ -778,6 +803,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                     Interlocked.Increment(ref data.LambdaBindingCountPerLevel[depth]);
                 }
             }
+
+            var cache = Binder.BoundLambdaCache;
+            Debug.Assert(cache is { });
+            cache.IncrementCounts(UnboundLambda.Syntax, 1, 0);
 
             return BindLambdaBodyCore(lambdaSymbol, lambdaBodyBinder, diagnostics);
         }

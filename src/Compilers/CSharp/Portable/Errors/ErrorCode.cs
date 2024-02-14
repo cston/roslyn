@@ -2284,6 +2284,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         ERR_CollectionExpressionTargetNoElementType = 9213,
         ERR_CollectionExpressionMissingConstructor = 9214,
         ERR_CollectionExpressionMissingAdd = 9215,
+        WRN_TooManyBoundLambdas = 9216,
 
         #endregion
 

@@ -430,6 +430,7 @@ class X
                         case ErrorCode.WRN_UseDefViolationRefField:
                         case ErrorCode.WRN_CollectionExpressionRefStructMayAllocate:
                         case ErrorCode.WRN_CollectionExpressionRefStructSpreadMayAllocate:
+                        case ErrorCode.WRN_TooManyBoundLambdas:
                             Assert.Equal(1, ErrorFacts.GetWarningLevel(errorCode));
                             break;
                         case ErrorCode.WRN_InvalidVersionFormat:

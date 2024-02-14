@@ -1779,6 +1779,21 @@ namespace Microsoft.CodeAnalysis.CSharp
                     //assertBindIdentifierTargets(inMethodBinder, identifierMap, methodBody, diagnostics);
 #endif
 
+                    // PROTOTYPE: At this point, we could report warnings for any top-level lambda expressions
+                    // that were bound too many times.
+
+                    var cache = bodyBinder.BoundLambdaCache;
+                    Debug.Assert(cache is { });
+
+                    cache.ForEachLambda((syntax, lambdaBindingCount, unboundLambdaStateCount) =>
+                        {
+                            const int maxLambdas = 1;
+                            if (lambdaBindingCount > maxLambdas)
+                            {
+                                diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
+                            }
+                        });
+
                     BoundNode methodBodyForSemanticModel = methodBody;
                     NullableWalker.SnapshotManager? snapshotManager = null;
                     ImmutableDictionary<Symbol, Symbol>? remappedSymbols = null;

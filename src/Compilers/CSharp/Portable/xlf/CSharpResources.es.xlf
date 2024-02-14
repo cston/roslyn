@@ -4838,6 +4838,16 @@
         <target state="translated">El valor generado puede ser NULL.</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas">
+        <source>Too many bound lambdas: bound {0}, unbound {1}.</source>
+        <target state="new">Too many bound lambdas: bound {0}, unbound {1}.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas_Title">
+        <source>Too many bound lambdas.</source>
+        <target state="new">Too many bound lambdas.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_TopLevelNullabilityMismatchInParameterTypeOnExplicitImplementation">
         <source>Nullability of reference types in type of parameter '{0}' doesn't match implemented member '{1}' (possibly because of nullability attributes).</source>
         <target state="translated">La nulabilidad de los tipos de referencia del tipo de parámetro "{0}" no coincide con el miembro implementado "{1}" (posiblemente debido a los atributos de nulabilidad).</target>
