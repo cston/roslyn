@@ -1785,14 +1785,17 @@ namespace Microsoft.CodeAnalysis.CSharp
                     var cache = bodyBinder.BoundLambdaCache;
                     Debug.Assert(cache is { });
 
-                    cache.ForEachLambda((syntax, lambdaBindingCount, unboundLambdaStateCount) =>
+                    var builder = ArrayBuilder<(SyntaxNode, int, int)>.GetInstance();
+                    cache.GetCounts(builder);
+                    foreach (var (syntax, lambdaBindingCount, unboundLambdaStateCount) in builder)
+                    {
+                        const int maxLambdas = 1;
+                        if (lambdaBindingCount > maxLambdas)
                         {
-                            const int maxLambdas = 1;
-                            if (lambdaBindingCount > maxLambdas)
-                            {
-                                diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
-                            }
-                        });
+                            diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
+                        }
+                    }
+                    builder.Free();
 
                     BoundNode methodBodyForSemanticModel = methodBody;
                     NullableWalker.SnapshotManager? snapshotManager = null;
