@@ -3619,41 +3619,58 @@ namespace Microsoft.CodeAnalysis.CSharp
             // we'll be able to process the element conversions and compute the final visit result.
 
             var (collectionKind, elementType) = getCollectionDetails(node, node.Type);
+            var elements = node.Elements;
+            // PROTOTYPE: We already have the element conversions in the UnderlyingConversions
+            // from the containing collection expression Conversion. We should refactor this
+            // code and have VisitConversion for the containing collection expression conversion
+            // handle checking the element conversions.
+            var elementConversions = elements.SelectAsArray(e => getElementConversion(_conversions, elementType.Type, e));
 
-            var resultBuilder = ArrayBuilder<VisitResult>.GetInstance(node.Elements.Length);
+            Debug.Assert(elements.Length == elementConversions.Length);
+
+            var resultBuilder = ArrayBuilder<VisitResult>.GetInstance(elements.Length);
             var elementConversionCompletions = ArrayBuilder<Func<TypeWithAnnotations, TypeWithState>>.GetInstance();
-            foreach (var element in node.Elements)
-            {
-                switch (element)
-                {
-                    case BoundCollectionElementInitializer initializer:
-                        // We don't visit the Add methods
-                        // But we should check conversion to the iteration type
-                        // Tracked by https://github.com/dotnet/roslyn/issues/68786
-                        SetUnknownResultNullability(initializer);
-                        Debug.Assert(node.Placeholder is { });
-                        SetUnknownResultNullability(node.Placeholder);
-                        Visit(initializer.Arguments[0]);
-                        break;
-                    case BoundCollectionExpressionSpreadElement spread:
-                        // https://github.com/dotnet/roslyn/issues/68786: We should check the spread
-                        Visit(spread);
-                        break;
-                    default:
-                        var elementExpr = (BoundExpression)element;
-                        if (!elementType.HasType)
-                        {
-                            VisitRvalueWithState(elementExpr);
-                        }
-                        else
-                        {
-                            var completion = VisitOptionalImplicitConversion(elementExpr, elementType,
-                                useLegacyWarnings: false, trackMembers: false, AssignmentKind.Assignment, delayCompletionForTargetType: true).completion;
 
-                            Debug.Assert(completion is not null);
-                            elementConversionCompletions.Add(completion);
-                        }
-                        break;
+            for (int i = 0; i < elements.Length; i++)
+            {
+                var element = elements[i];
+                if (element is BoundCollectionExpressionSpreadElement spread)
+                {
+                    // https://github.com/dotnet/roslyn/issues/68786: We should check the spread
+                    Visit(spread);
+                }
+                else
+                {
+                    var elementExpr = Binder.GetUnderlyingCollectionExpressionElement(node, (BoundExpression)element, throwOnErrors: false);
+                    if (elementExpr is null)
+                    {
+                        SetInvalidResult();
+                    }
+                    else if (!elementType.HasType)
+                    {
+                        VisitRvalueWithState(elementExpr);
+                    }
+                    else
+                    {
+                        (BoundExpression operand, _) = RemoveConversion(elementExpr, includeExplicitConversions: false);
+                        var operandType = VisitRvalueWithState(operand);
+                        var elementConversion = elementConversions[i];
+                        var completion = (TypeWithAnnotations targetTypeOpt) =>
+                            VisitConversion(
+                                conversionOpt: null,
+                                operand,
+                                elementConversion,
+                                targetTypeOpt,
+                                operandType,
+                                checkConversion: true,
+                                fromExplicitCast: false,
+                                useLegacyWarnings: false,
+                                AssignmentKind.Assignment,
+                                reportTopLevelWarnings: true,
+                                reportRemainingWarnings: true,
+                                trackMembers: false);
+                        elementConversionCompletions.Add(completion);
+                    }
                 }
 
                 resultBuilder.Add(_visitResult);
@@ -3679,6 +3696,28 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             SetResult(node, visitResult, updateAnalyzedNullability: !node.WasTargetTyped, isLvalue: false);
             return null;
+
+            // PROTOTYPE: Remove this. We already have the element conversions in the
+            // UnderlyingConversions from the containing collection expression Conversion.
+            static Conversion getElementConversion(ConversionsBase conversions, TypeSymbol? elementType, BoundNode element)
+            {
+                if (elementType is null)
+                {
+                    return Conversion.NoConversion;
+                }
+                if (element is BoundCollectionExpressionSpreadElement)
+                {
+                    // PROTOTYPE: Not handling spreads.
+                    return Conversion.NoConversion;
+                }
+                (BoundExpression expression, _) = RemoveConversion((BoundExpression)element, includeExplicitConversions: false);
+                if (expression is BoundLambda lambda)
+                {
+                    expression = lambda.UnboundLambda;
+                }
+                var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded;
+                return conversions.ClassifyImplicitConversionFromExpression(expression, elementType, ref useSiteInfo);
+            }
 
             TypeWithState convertCollection(BoundCollectionExpression node, TypeWithAnnotations targetCollectionType, ArrayBuilder<Func<TypeWithAnnotations, TypeWithState>> completions)
             {
@@ -3725,14 +3764,9 @@ namespace Microsoft.CodeAnalysis.CSharp
             (CollectionExpressionTypeKind, TypeWithAnnotations) getCollectionDetails(BoundCollectionExpression node, TypeSymbol collectionType)
             {
                 var collectionKind = ConversionsBase.GetCollectionExpressionTypeKind(this.compilation, collectionType, out var targetElementType);
-                if (collectionKind is CollectionExpressionTypeKind.CollectionBuilder)
+                if (collectionKind is CollectionExpressionTypeKind.ImplementsIEnumerable or CollectionExpressionTypeKind.CollectionBuilder)
                 {
-                    var createMethod = node.CollectionBuilderMethod;
-                    if (createMethod is not null)
-                    {
-                        var foundIterationType = _binder.TryGetCollectionIterationType((ExpressionSyntax)node.Syntax, collectionType, out targetElementType);
-                        Debug.Assert(foundIterationType);
-                    }
+                    _binder.TryGetCollectionIterationType((ExpressionSyntax)node.Syntax, collectionType, out targetElementType);
                 }
 
                 return (collectionKind, targetElementType);
@@ -7785,14 +7819,28 @@ namespace Microsoft.CodeAnalysis.CSharp
                     var elementsBuilder = ArrayBuilder<BoundNode>.GetInstance(collectionExpressionVisitResults.Length);
                     for (int i = 0; i < collectionExpressionVisitResults.Length; i++)
                     {
-                        if (collection.Elements[i] is BoundExpression elementExpression)
+                        var collectionElement = collection.Elements[i];
+                        if (collectionElement is BoundCollectionExpressionSpreadElement spreadElement)
                         {
-                            var (elementNoConversion, _) = RemoveConversion(elementExpression, includeExplicitConversions: false);
-                            elementsBuilder.Add(getArgumentForMethodTypeInference(elementNoConversion, collectionExpressionVisitResults[i]));
+                            var iteratorExpr = ((BoundExpressionStatement?)spreadElement.IteratorBody)?.Expression;
+                            Debug.Assert(iteratorExpr is { });
+                            var iteratorBody = Binder.GetUnderlyingCollectionExpressionElement(collection, iteratorExpr, throwOnErrors: false);
+                            elementsBuilder.Add(
+                                spreadElement.Update(
+                                    spreadElement.Expression,
+                                    spreadElement.ExpressionPlaceholder,
+                                    spreadElement.Conversion,
+                                    spreadElement.EnumeratorInfoOpt,
+                                    spreadElement.LengthOrCount,
+                                    spreadElement.ElementPlaceholder,
+                                    iteratorBody is null ? null : new BoundExpressionStatement(iteratorBody.Syntax, iteratorBody)));
                         }
                         else
                         {
-                            elementsBuilder.Add(collection.Elements[i]);
+                            var elementExpression = Binder.GetUnderlyingCollectionExpressionElement(collection, (BoundExpression)collectionElement, throwOnErrors: false);
+                            Debug.Assert(elementExpression is { });
+                            var (elementNoConversion, _) = RemoveConversion(elementExpression, includeExplicitConversions: false);
+                            elementsBuilder.Add(getArgumentForMethodTypeInference(elementNoConversion, collectionExpressionVisitResults[i]));
                         }
                     }
 
@@ -8149,54 +8197,54 @@ namespace Microsoft.CodeAnalysis.CSharp
             SnapshotWalkerThroughConversionGroup(expr, operand);
             var operandType = VisitRvalueWithState(operand);
 
-            return visitConversion(expr, targetTypeOpt, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType, delayCompletionForTargetType);
+            return VisitConversion(expr, targetTypeOpt, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType, delayCompletionForTargetType);
+        }
 
-            (TypeWithState resultType, Func<TypeWithAnnotations, TypeWithState>? completion) visitConversion(
-                BoundExpression expr,
-                TypeWithAnnotations targetTypeOpt,
-                bool useLegacyWarnings, bool trackMembers, AssignmentKind assignmentKind,
-                BoundExpression operand,
-                Conversion conversion, TypeWithState operandType,
-                bool delayCompletionForTargetType)
+        private (TypeWithState resultType, Func<TypeWithAnnotations, TypeWithState>? completion) VisitConversion(
+            BoundExpression expr,
+            TypeWithAnnotations targetTypeOpt,
+            bool useLegacyWarnings, bool trackMembers, AssignmentKind assignmentKind,
+            BoundExpression operand,
+            Conversion conversion, TypeWithState operandType,
+            bool delayCompletionForTargetType)
+        {
+            if (delayCompletionForTargetType)
             {
-                if (delayCompletionForTargetType)
-                {
-                    return (TypeWithState.Create(targetTypeOpt), visitConversionAsContinuation(expr, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType));
-                }
-
-                Debug.Assert(targetTypeOpt.HasType);
-
-                // If an explicit conversion was used in place of an implicit conversion, the explicit
-                // conversion was created by initial binding after reporting "error CS0266:
-                // Cannot implicitly convert type '...' to '...'. An explicit conversion exists ...".
-                // Since an error was reported, we don't need to report nested warnings as well.
-                bool reportNestedWarnings = !conversion.IsExplicit;
-                var resultType = VisitConversion(
-                    GetConversionIfApplicable(expr, operand),
-                    operand,
-                    conversion,
-                    targetTypeOpt,
-                    operandType,
-                    checkConversion: true,
-                    fromExplicitCast: false,
-                    useLegacyWarnings: useLegacyWarnings,
-                    assignmentKind,
-                    reportTopLevelWarnings: true,
-                    reportRemainingWarnings: reportNestedWarnings,
-                    trackMembers: trackMembers);
-
-                return (resultType, null);
+                return (TypeWithState.Create(targetTypeOpt), VisitConversionAsContinuation(expr, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType));
             }
 
-            Func<TypeWithAnnotations, TypeWithState> visitConversionAsContinuation(BoundExpression expr, bool useLegacyWarnings, bool trackMembers, AssignmentKind assignmentKind, BoundExpression operand, Conversion conversion, TypeWithState operandType)
+            Debug.Assert(targetTypeOpt.HasType);
+
+            // If an explicit conversion was used in place of an implicit conversion, the explicit
+            // conversion was created by initial binding after reporting "error CS0266:
+            // Cannot implicitly convert type '...' to '...'. An explicit conversion exists ...".
+            // Since an error was reported, we don't need to report nested warnings as well.
+            bool reportNestedWarnings = !conversion.IsExplicit;
+            var resultType = VisitConversion(
+                GetConversionIfApplicable(expr, operand),
+                operand,
+                conversion,
+                targetTypeOpt,
+                operandType,
+                checkConversion: true,
+                fromExplicitCast: false,
+                useLegacyWarnings: useLegacyWarnings,
+                assignmentKind,
+                reportTopLevelWarnings: true,
+                reportRemainingWarnings: reportNestedWarnings,
+                trackMembers: trackMembers);
+
+            return (resultType, null);
+        }
+
+        private Func<TypeWithAnnotations, TypeWithState> VisitConversionAsContinuation(BoundExpression expr, bool useLegacyWarnings, bool trackMembers, AssignmentKind assignmentKind, BoundExpression operand, Conversion conversion, TypeWithState operandType)
+        {
+            return (TypeWithAnnotations targetTypeOpt) =>
             {
-                return (TypeWithAnnotations targetTypeOpt) =>
-                {
-                    var result = visitConversion(expr, targetTypeOpt, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType, delayCompletionForTargetType: false);
-                    Debug.Assert(result.completion is null);
-                    return result.resultType;
-                };
-            }
+                var result = VisitConversion(expr, targetTypeOpt, useLegacyWarnings, trackMembers, assignmentKind, operand, conversion, operandType, delayCompletionForTargetType: false);
+                Debug.Assert(result.completion is null);
+                return result.resultType;
+            };
         }
 
         private static bool AreNullableAndUnderlyingTypes([NotNullWhen(true)] TypeSymbol? nullableTypeOpt, [NotNullWhen(true)] TypeSymbol? underlyingTypeOpt, out TypeWithAnnotations underlyingTypeWithAnnotations)

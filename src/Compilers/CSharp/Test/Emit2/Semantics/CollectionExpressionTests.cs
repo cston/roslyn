@@ -12878,14 +12878,17 @@ namespace System
                     }
                 }
                 """;
-
-            // We should check conversion to the iteration type
-            // Tracked by https://github.com/dotnet/roslyn/issues/68786
             var comp = CreateCompilation(source);
             comp.VerifyEmitDiagnostics(
                 // (8,9): warning CS8602: Dereference of a possibly null reference.
                 //         x[0].ToString(); // 1
-                Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x[0]").WithLocation(8, 9));
+                Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "x[0]").WithLocation(8, 9),
+                // (9,27): warning CS8625: Cannot convert null literal to non-nullable reference type.
+                //         List<object> y = [null]; // 2
+                Diagnostic(ErrorCode.WRN_NullAsNonNullable, "null").WithLocation(9, 27),
+                // (11,17): warning CS8625: Cannot convert null literal to non-nullable reference type.
+                //         y = [2, null]; // 3
+                Diagnostic(ErrorCode.WRN_NullAsNonNullable, "null").WithLocation(11, 17));
         }
 
         [Fact]
@@ -30847,13 +30850,13 @@ partial class Program
                 M(CreateAnnotated(maybeNull), [maybeNull]);
                 M(CreateAnnotated(maybeNull), [notNull]);
 
-                M(CreateAnnotated(notNull), [maybeNull]);
+                M(CreateAnnotated(notNull), [maybeNull]); // 1
                 M(CreateAnnotated(notNull), [notNull]);
 
                 M(CreateUnannotated(maybeNull), [maybeNull]);
                 M(CreateUnannotated(maybeNull), [notNull]);
 
-                M(CreateUnannotated(notNull), [maybeNull]); // 1
+                M(CreateUnannotated(notNull), [maybeNull]); // 2
                 M(CreateUnannotated(notNull), [notNull]);
 
                 void M<T>(T t1, T t2) { }
@@ -30876,11 +30879,14 @@ partial class Program
                 }
                 """;
 
-            // Should we also produce W-warnings on `M(CreateAnnotated(notNull), [maybeNull])` and `M(CreateUnannotated(notNull), [maybeNull])`?
-            // Tracked by https://github.com/dotnet/roslyn/issues/68786
-
             // We don't analyze the Add methods
-            CreateCompilation(source).VerifyEmitDiagnostics();
+            CreateCompilation(source).VerifyEmitDiagnostics(
+                // (11,30): warning CS8601: Possible null reference assignment.
+                // M(CreateAnnotated(notNull), [maybeNull]); // 1
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(11, 30),
+                // (17,32): warning CS8601: Possible null reference assignment.
+                // M(CreateUnannotated(notNull), [maybeNull]); // 2
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(17, 32));
         }
 
         [Fact]
@@ -30952,10 +30958,14 @@ partial class Program
                 }
                 """;
 
-            // We should produce W-warnings on `c1` and `c5` for implicit conversion from the element to the iteration type.
-            // Tracked by https://github.com/dotnet/roslyn/issues/68786
             // We don't analyze the Add methods
-            CreateCompilation(source).VerifyEmitDiagnostics();
+            CreateCompilation(source).VerifyEmitDiagnostics(
+                // (8,26): warning CS8601: Possible null reference assignment.
+                // CAnnotated<object> c1 = [maybeNull]; // 1
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(8, 26),
+                // (14,28): warning CS8601: Possible null reference assignment.
+                // CUnannotated<object> c5 = [maybeNull]; // 2
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(14, 28));
         }
 
         [Fact]
@@ -30972,13 +30982,13 @@ partial class Program
                 M(CreateAnnotated(maybeNull), [maybeNull]);
                 M(CreateAnnotated(maybeNull), [notNull]);
 
-                M(CreateAnnotated(notNull), [maybeNull]);
+                M(CreateAnnotated(notNull), [maybeNull]); // 1
                 M(CreateAnnotated(notNull), [notNull]);
 
                 M(CreateUnannotated(maybeNull), [maybeNull]);
                 M(CreateUnannotated(maybeNull), [notNull]);
 
-                M(CreateUnannotated(notNull), [maybeNull]);
+                M(CreateUnannotated(notNull), [maybeNull]); // 2
                 M(CreateUnannotated(notNull), [notNull]);
 
                 void M<T>(T t1, T t2) { }
@@ -31002,7 +31012,13 @@ partial class Program
                 """;
 
             // We don't analyze the Add methods
-            CreateCompilation(source).VerifyEmitDiagnostics();
+            CreateCompilation(source).VerifyEmitDiagnostics(
+                // (11,30): warning CS8601: Possible null reference assignment.
+                // M(CreateAnnotated(notNull), [maybeNull]); // 1
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(11, 30),
+                // (17,32): warning CS8601: Possible null reference assignment.
+                // M(CreateUnannotated(notNull), [maybeNull]); // 2
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "maybeNull").WithLocation(17, 32));
         }
 
         [Fact]
@@ -31265,9 +31281,10 @@ partial class Program
                 }
                 """;
 
-            // We should check conversion to the iteration type
-            // Tracked by https://github.com/dotnet/roslyn/issues/68786
-            var comp = CreateCompilation(src).VerifyEmitDiagnostics();
+            var comp = CreateCompilation(src).VerifyEmitDiagnostics(
+                // (6,26): warning CS8619: Nullability of reference types in value of type 'Container<string?>' doesn't match target type 'Container<string>'.
+                // var collection = IdList([element1, element2]); // 1
+                Diagnostic(ErrorCode.WRN_NullabilityMismatchInAssignment, "element1").WithArguments("Container<string?>", "Container<string>").WithLocation(6, 26));
 
             var tree = comp.SyntaxTrees.First();
             var invocation = GetSyntax<InvocationExpressionSyntax>(tree, "IdList([element1, element2])");
@@ -31496,6 +31513,35 @@ partial class Program
                 // (18,9): warning CS8714: The type 'string?' cannot be used as type parameter 'T' in the generic type or method 'C.M<T>(ref T, T[])'. Nullability of type argument 'string?' doesn't match 'notnull' constraint.
                 //         M(ref maybeNull, [notNull, maybeNull, ""]); // 5
                 Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterNotNullConstraint, "M").WithArguments("C.M<T>(ref T, T[])", "T", "string?").WithLocation(18, 9)
+                );
+        }
+
+        [Fact]
+        public void ElementNullability_Inference_ArrayCollection_Lambda_PROTOTYPE()
+        {
+            // Analyze captured variables at the location lambda is converted to a delegate
+            string src = """
+                #nullable enable
+                public class C
+                {
+                    void M1(string? s)
+                    {
+                        Method([() => s]).ToString(); // 1
+                    }
+                    T Method<T>(System.Func<T>[] a) => throw null!;
+                }
+                """;
+
+            CreateCompilation(src, targetFramework: TargetFramework.Net80).VerifyEmitDiagnostics(
+                // (6,9): warning CS8602: Dereference of a possibly null reference.
+                //         Method([() => s]).ToString(); // 1
+                Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "Method([() => s])").WithLocation(6, 9),
+                // (13,9): warning CS8602: Dereference of a possibly null reference.
+                //         Method2(s = null, [() => s]).ToString(); // 2
+                Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "Method2(s = null, [() => s])").WithLocation(13, 9),
+                // (18,42): warning CS8602: Dereference of a possibly null reference.
+                //         Method([Method3(s = null), () => s.ToString()]); // 3
+                Diagnostic(ErrorCode.WRN_NullReferenceReceiver, "s").WithLocation(18, 42)
                 );
         }
 
@@ -35672,6 +35718,416 @@ partial class Program
         }
 
         [WorkItem("https://github.com/dotnet/roslyn/issues/72461")]
+        // PROTOTYPE: Test when target element type is string? as well.
+        [Theory]
+        [InlineData("string[]")]
+        [InlineData("System.Collections.Generic.List<string>")]
+        [InlineData("System.Collections.Generic.HashSet<string>")]
+        [InlineData("System.Collections.Generic.IEnumerable<string>")]
+        public void Nullable_CollectionInitializerTypeElements(string targetType)
+        {
+            string source = $$"""
+                #nullable enable
+                class Program
+                {
+                    static void Main()
+                    {
+                        {{targetType}} c;
+                        string? x = "";
+                        string y = null;
+                        c = [null, default];
+                        c = [x, y];
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyDiagnostics(
+                // (8,20): warning CS8600: Converting null literal or possible null value to non-nullable type.
+                //         string y = null;
+                Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(8, 20),
+                // (9,14): warning CS8625: Cannot convert null literal to non-nullable reference type.
+                //         c = [null, default];
+                Diagnostic(ErrorCode.WRN_NullAsNonNullable, "null").WithLocation(9, 14),
+                // (9,20): warning CS8625: Cannot convert null literal to non-nullable reference type.
+                //         c = [null, default];
+                Diagnostic(ErrorCode.WRN_NullAsNonNullable, "default").WithLocation(9, 20),
+                // (10,17): warning CS8601: Possible null reference assignment.
+                //         c = [x, y];
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "y").WithLocation(10, 17));
+        }
+
+        // PROTOTYPE: Test when target element type is object? as well.
+        // PROTOTYPE: Test target types other than collection initializer types.
+        [Theory]
+        [InlineData("object[]")]
+        [InlineData("System.Collections.Generic.List<object>")]
+        [InlineData("System.Collections.Generic.HashSet<object>")]
+        [InlineData("System.Collections.Generic.IEnumerable<object>")]
+        public void Nullable_SpreadElements(object targetType)
+        {
+            string source = $$"""
+                #nullable enable
+                class Program
+                {
+                    static void Main()
+                    {
+                        {{targetType}} c;
+                        object[] x = [];
+                        object?[] y = [];
+                        c = [..x, ..y];
+                        string[] z = [];
+                        string?[] w = [];
+                        c = [..z, ..w];
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            // PROTOTYPE: Should report warnings for y, w.
+            comp.VerifyDiagnostics();
+        }
+
+        // PROTOTYPE: Test with custom collection types that either implement IEnumerable<T>,
+        // or just IEnumerable, or a GetEnumerator() method only.
+
+        // PROTOTYPE: Test spread expression where the expression itself must be evaluated by
+        // NullableWalker to infer to the correct nullability of the iterator type.
+
+        [Theory]
+        [InlineData("string[]")]
+        [InlineData("System.Collections.Generic.List<string>")]
+        [InlineData("System.Collections.Generic.HashSet<string>")]
+        [InlineData("System.Collections.Generic.IEnumerable<string>")]
+        public void Nullable_CollectionInitializerTypeElements_Dynamic(string targetType)
+        {
+            string source = $$"""
+                #nullable enable
+                class Program
+                {
+                    static void Main()
+                    {
+                        {{targetType}} c;
+                        dynamic? x = "";
+                        dynamic y = null;
+                        c = [x, y];
+                        dynamic?[] z = [];
+                        dynamic[] w = [];
+                        c = [..z, ..w];
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyDiagnostics(
+                // (8,21): warning CS8600: Converting null literal or possible null value to non-nullable type.
+                //         dynamic y = null;
+                Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(8, 21),
+                // (9,17): warning CS8601: Possible null reference assignment.
+                //         c = [x, y];
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "y").WithLocation(9, 17));
+        }
+
+        [Fact]
+        public void Add_ImplicitReferenceConversion()
+        {
+            string sourceA = """
+                #nullable enable
+                using System.Collections;
+                using System.Collections.Generic;
+                class MyCollection<T, U> : IEnumerable<T>
+                    where T : U
+                {
+                #nullable disable
+                    private List<T> _list = new();
+                    public void Add(U u) => _list.Add((T)u);
+                    public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+                """;
+
+            string sourceB1 = """
+                #nullable enable
+                class Program
+                {
+                    static void Main()
+                    {
+                        string x = null;
+                        string?[] y = [null];
+                        MyCollection<string, object?> z = /*<bind>*/[x, ..y]/*</bind>*/;
+                        z.Report();
+                    }
+                }
+                """;
+            var comp = CreateCompilation([sourceB1, sourceA, s_collectionExtensions], options: TestOptions.ReleaseExe);
+            // PROTOTYPE: The only warning should be for string x = null;.
+            comp.VerifyEmitDiagnostics(
+                // (6,20): warning CS8600: Converting null literal or possible null value to non-nullable type.
+                //         string x = null;
+                Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(6, 20),
+                // (8,54): warning CS8601: Possible null reference assignment.
+                //         MyCollection<string, object?> z = /*<bind>*/[x, ..y]/*</bind>*/;
+                Diagnostic(ErrorCode.WRN_NullReferenceAssignment, "x").WithLocation(8, 54));
+
+            CompileAndVerify(comp, expectedOutput: "[null, null], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: String rather than Type: Object.
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (2 elements, ConstructMethod: MyCollection<System.String, System.Object?>..ctor()) (OperationKind.CollectionExpression, Type: MyCollection<System.String, System.Object?>) (Syntax: '[x, ..y]')
+                  Elements(2):
+                      IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Object, IsImplicit) (Syntax: 'x')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: True, IsUserDefined: False) (MethodSymbol: null)
+                        Operand:
+                          ILocalReferenceOperation: x (OperationKind.LocalReference, Type: System.String?) (Syntax: 'x')
+                      ISpreadOperation (ElementType: System.String) (OperationKind.Spread, Type: null) (Syntax: '..y')
+                        Operand:
+                          ILocalReferenceOperation: y (OperationKind.LocalReference, Type: System.String?[]) (Syntax: 'y')
+                        ElementConversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: True, IsUserDefined: False) (MethodSymbol: null)
+                          (ImplicitReference)
+                """);
+
+            string sourceB2 = """
+                #nullable enable
+                class Program
+                {
+                    static void Main()
+                    {
+                        string x = null;
+                        string?[] y = [null];
+                        MyCollection<string?, object> z = /*<bind>*/[x, ..y]/*</bind>*/;
+                        z.Report();
+                    }
+                }
+                """;
+            comp = CreateCompilation([sourceB2, sourceA, s_collectionExtensions], options: TestOptions.ReleaseExe);
+            // PROTOTYPE: The only warning should be for string x = null;.
+            comp.VerifyEmitDiagnostics(
+                // (6,20): warning CS8600: Converting null literal or possible null value to non-nullable type.
+                //         string x = null;
+                Diagnostic(ErrorCode.WRN_ConvertingNullableToNonNullable, "null").WithLocation(6, 20),
+                // (8,22): warning CS8631: The type 'string?' cannot be used as type parameter 'T' in the generic type or method 'MyCollection<T, U>'. Nullability of type argument 'string?' doesn't match constraint type 'object'.
+                //         MyCollection<string?, object> z = /*<bind>*/[x, ..y]/*</bind>*/;
+                Diagnostic(ErrorCode.WRN_NullabilityMismatchInTypeParameterConstraint, "string?").WithArguments("MyCollection<T, U>", "object", "T", "string?").WithLocation(8, 22));
+
+            CompileAndVerify(comp, expectedOutput: "[null, null], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: String? rather than Type: Object.
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (2 elements, ConstructMethod: MyCollection<System.String?, System.Object>..ctor()) (OperationKind.CollectionExpression, Type: MyCollection<System.String?, System.Object>) (Syntax: '[x, ..y]')
+                  Elements(2):
+                      IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Object, IsImplicit) (Syntax: 'x')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: True, IsUserDefined: False) (MethodSymbol: null)
+                        Operand:
+                          ILocalReferenceOperation: x (OperationKind.LocalReference, Type: System.String?) (Syntax: 'x')
+                      ISpreadOperation (ElementType: System.String) (OperationKind.Spread, Type: null) (Syntax: '..y')
+                        Operand:
+                          ILocalReferenceOperation: y (OperationKind.LocalReference, Type: System.String?[]) (Syntax: 'y')
+                        ElementConversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: True, IsUserDefined: False) (MethodSymbol: null)
+                          (ImplicitReference)
+                """);
+        }
+
+        // PROTOTYPE: Test IEnumerable<object> with Add(object?) and IEnumerable<object?> and Add(object).
+        // PROTOTYPE: Test IEnumerable<int> with Add(object).
+        // PROTOTYPE: Test IEnumerable<int?> with Add(object).
+
+        [Fact]
+        public void Add_ImplicitNullableConversion()
+        {
+            string source = """
+                #nullable enable
+                using System.Collections;
+                using System.Collections.Generic;
+                struct MyCollection : IEnumerable<int>
+                {
+                    private List<int> _list;
+                    public void Add(int? value) => GetList().Add(value ?? -1);
+                    public IEnumerator<int> GetEnumerator() => GetList().GetEnumerator();
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                    private List<int> GetList() => _list ??= new();
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        int[] x = [default];
+                        MyCollection y = /*<bind>*/[default, ..x]/*</bind>*/;
+                        y.Report();
+                    }
+                }
+                """;
+            var comp = CreateCompilation([source, s_collectionExtensions], options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "[-1, 0], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: Int32 rather than Type: Int32?.
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (2 elements, ConstructMethod: MyCollection..ctor()) (OperationKind.CollectionExpression, Type: MyCollection) (Syntax: '[default, ..x]')
+                  Elements(2):
+                      IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32?, IsImplicit) (Syntax: 'default')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                        Operand:
+                          IDefaultValueOperation (OperationKind.DefaultValue, Type: System.Int32?) (Syntax: 'default')
+                      ISpreadOperation (ElementType: System.Int32) (OperationKind.Spread, Type: null) (Syntax: '..x')
+                        Operand:
+                          ILocalReferenceOperation: x (OperationKind.LocalReference, Type: System.Int32[]) (Syntax: 'x')
+                        ElementConversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                          (ImplicitNullable)
+                """);
+        }
+
+        // PROTOTYPE: What should the semantic model return for the conversion in GetSymbolInfo()
+        // for these collection initializer cases where the conversion to the iteration type does not match
+        // the conversion to the applicable Add() parameter? What about IOperation?
+        // Essentially, is our BoundNode model incorrect? Should the BoundNode model reflect the
+        // conversion to iteration type in each case, with an additional BoundNode for the Add() call
+        // where the additional BoundNode is only used for lowering?
+
+        // PROTOTYPE: Test collection of lambda expressions where the iterator type
+        // and the applicable Add() have different delegate types.
+
+        // PROTOTYPE: Also test the case where there's a UDC from the element
+        // to the element type, but not from the element to the applicable Add().
+        [Fact]
+        public void Add_ImplicitUserDefinedConversion()
+        {
+            string source = """
+                #nullable enable
+                using System.Collections;
+                using System.Collections.Generic;
+                class MyInt
+                {
+                    internal readonly int _i;
+                    public MyInt(int i) { _i = i; }
+                    public static implicit operator MyInt(int i) => new(i);
+                }
+                class MyCollection : IEnumerable<int>
+                {
+                    private List<MyInt> _list = new();
+                    public void Add(MyInt i) => _list.Add(i);
+                    public IEnumerator<int> GetEnumerator() { foreach (var i in _list) yield return i._i; }
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        int[] x = [2, 3];
+                        MyCollection y = /*<bind>*/[1, ..x]/*</bind>*/;
+                        y.Report();
+                    }
+                }
+                """;
+
+            var comp = CreateCompilation([source, s_collectionExtensions], options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "[1, 2, 3], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: int rather than Type: MyInt.
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (2 elements, ConstructMethod: MyCollection..ctor()) (OperationKind.CollectionExpression, Type: MyCollection) (Syntax: '[1, ..x]')
+                  Elements(2):
+                      IConversionOperation (TryCast: False, Unchecked) (OperatorMethod: MyInt MyInt.op_Implicit(System.Int32 i)) (OperationKind.Conversion, Type: MyInt, IsImplicit) (Syntax: '1')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: True) (MethodSymbol: MyInt MyInt.op_Implicit(System.Int32 i))
+                        Operand:
+                          ILiteralOperation (OperationKind.Literal, Type: System.Int32, Constant: 1) (Syntax: '1')
+                      ISpreadOperation (ElementType: System.Int32) (OperationKind.Spread, Type: null) (Syntax: '..x')
+                        Operand:
+                          ILocalReferenceOperation: x (OperationKind.LocalReference, Type: System.Int32[]) (Syntax: 'x')
+                        ElementConversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: True) (MethodSymbol: MyInt MyInt.op_Implicit(System.Int32 i))
+                          (ImplicitUserDefined)
+                """);
+        }
+
+        // PROTOTYPE: Test with x = [y, ..z] where y is MyCollection, z is MyCollection[].
+        [Fact]
+        public void Add_ParamsArray_10()
+        {
+            string source = """
+                #nullable enable
+                using System.Collections;
+                using System.Collections.Generic;
+                class MyCollection : IEnumerable
+                {
+                    private List<MyCollection> _list;
+                    public void Add(params MyCollection[] x) => GetList().AddRange(x);
+                    public IEnumerator<MyCollection> GetEnumerator() => GetList().GetEnumerator();
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                    private List<MyCollection> GetList() => _list ??= new();
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        MyCollection x = /*<bind>*/[[]]/*</bind>*/;
+                        x.Report();
+                    }
+                }
+                """;
+
+            var comp = CreateCompilation([source, s_collectionExtensions], options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "[], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: MyCollection rather than Type: MyCollection[].
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (1 elements, ConstructMethod: MyCollection..ctor()) (OperationKind.CollectionExpression, Type: MyCollection) (Syntax: '[[]]')
+                  Elements(1):
+                      IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: MyCollection[], IsImplicit) (Syntax: '[]')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                        Operand:
+                          ICollectionExpressionOperation (0 elements, ConstructMethod: null) (OperationKind.CollectionExpression, Type: MyCollection[]) (Syntax: '[]')
+                            Elements(0)
+                """);
+        }
+
+        // PROTOTYPE: Test when the Add method is an extension method: Add(this MyCollection, params MyCollection[]).
+
+        // PROTOTYPE: Test with x = [y, ..z] where y is MyCollection, z is MyCollection[].
+        [Fact]
+        public void Add_ParamsArray_11()
+        {
+            string source = """
+                #nullable enable
+                using System.Collections;
+                using System.Collections.Generic;
+                struct MyCollection : IEnumerable
+                {
+                    private List<MyCollection?> _list;
+                    public void Add(params MyCollection?[] x) => GetList().AddRange(x);
+                    public IEnumerator<MyCollection?> GetEnumerator() => GetList().GetEnumerator();
+                    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+                    private List<MyCollection?> GetList() => _list ??= new();
+                }
+                class Program
+                {
+                    static void Main()
+                    {
+                        MyCollection? x = /*<bind>*/[[]]/*</bind>*/;
+                        x.Value.Report();
+                    }
+                }
+                """;
+
+            var comp = CreateCompilation([source, s_collectionExtensions], /* PROTOTYPE: Remove this */parseOptions: TestOptions.Regular.WithFeature("run-nullable-analysis", "never"), options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "[], ");
+
+            // PROTOTYPE: IConversionOperation should be Type: MyCollection? rather than Type: MyCollection?[].
+            VerifyOperationTreeForTest<CollectionExpressionSyntax>(comp,
+                """
+                ICollectionExpressionOperation (1 elements, ConstructMethod: MyCollection..ctor()) (OperationKind.CollectionExpression, Type: MyCollection) (Syntax: '[[]]')
+                  Elements(1):
+                      IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: MyCollection?[], IsImplicit) (Syntax: '[]')
+                        Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                        Operand:
+                          ICollectionExpressionOperation (0 elements, ConstructMethod: null) (OperationKind.CollectionExpression, Type: MyCollection?[]) (Syntax: '[]')
+                            Elements(0)
+                """);
+        }
+
         [Fact]
         public void Add_ParamsArray_07()
         {

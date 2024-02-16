@@ -118,8 +118,26 @@ namespace Microsoft.CodeAnalysis.CSharp
                     this.VisitList(node.UnconvertedCollectionExpression.Elements);
                     return null;
                 }
-
-                return base.VisitCollectionExpression(node);
+                else
+                {
+                    foreach (var element in node.Elements)
+                    {
+                        if (element is BoundCollectionExpressionSpreadElement spread)
+                        {
+                            Visit(spread);
+                        }
+                        else
+                        {
+                            var expr = Binder.GetUnderlyingCollectionExpressionElement(node, (BoundExpression)element, throwOnErrors: false);
+                            if (expr is { })
+                            {
+                                (expr, _) = RemoveConversion(expr, includeExplicitConversions: false);
+                            }
+                            Visit(expr);
+                        }
+                    }
+                    return null;
+                }
             }
 
             public override BoundNode? VisitDeconstructionAssignmentOperator(BoundDeconstructionAssignmentOperator node)
