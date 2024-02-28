@@ -4838,6 +4838,16 @@ strument:TestCoverage      產生檢測要收集
         <target state="translated">擲回值可能為 null。</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas">
+        <source>Too many bound lambdas: bound {0}, unbound {1}.</source>
+        <target state="new">Too many bound lambdas: bound {0}, unbound {1}.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas_Title">
+        <source>Too many bound lambdas.</source>
+        <target state="new">Too many bound lambdas.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_TopLevelNullabilityMismatchInParameterTypeOnExplicitImplementation">
         <source>Nullability of reference types in type of parameter '{0}' doesn't match implemented member '{1}' (possibly because of nullability attributes).</source>
         <target state="translated">參數類型 '{0}' 中參考型別是否可為 NULL 的情況，與實作的成員 '{1}' 不相符 (可能的原因是屬性可為 NULL )。</target>

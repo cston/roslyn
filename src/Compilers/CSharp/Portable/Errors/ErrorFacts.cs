@@ -554,6 +554,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ErrorCode.WRN_CollectionExpressionRefStructMayAllocate:
                 case ErrorCode.WRN_CollectionExpressionRefStructSpreadMayAllocate:
                 case ErrorCode.WRN_ConvertingLock:
+                case ErrorCode.WRN_TooManyBoundLambdas:
                     return 1;
                 default:
                     return 0;
@@ -2415,6 +2416,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ErrorCode.ERR_CollectionExpressionMissingAdd:
                 case ErrorCode.WRN_ConvertingLock:
                 case ErrorCode.ERR_BadSpecialByRefLock:
+                case ErrorCode.WRN_TooManyBoundLambdas:
                     return false;
                 default:
                     // NOTE: All error codes must be explicitly handled in this switch statement

@@ -1776,6 +1776,21 @@ namespace Microsoft.CodeAnalysis.CSharp
                     assertBindIdentifierTargets(inMethodBinder, identifierMap, methodBody, diagnostics);
 #endif
 
+                    var cache = (CountingBindingLogger?)bodyBinder.BindingLogger;
+                    Debug.Assert(cache is { });
+
+                    var builder = ArrayBuilder<(SyntaxNode, int, int)>.GetInstance();
+                    cache.GetLambdaBinding(builder);
+                    foreach (var (syntax, lambdaBindingCount, unboundLambdaStateCount) in builder)
+                    {
+                        const int maxLambdas = 1;
+                        if (lambdaBindingCount > maxLambdas)
+                        {
+                            diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
+                        }
+                    }
+                    builder.Free();
+
                     BoundNode methodBodyForSemanticModel = methodBody;
                     NullableWalker.SnapshotManager? snapshotManager = null;
                     ImmutableDictionary<Symbol, Symbol>? remappedSymbols = null;
