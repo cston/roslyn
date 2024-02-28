@@ -147,6 +147,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        internal override BindingLogger? BindingLogger => null;
+
         // This should only be called in the context of syntactically incorrect programs.  In other
         // contexts statements are surrounded by some enclosing method or lambda.
         internal override TypeWithAnnotations GetIteratorElementType()

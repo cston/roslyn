@@ -558,6 +558,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ErrorCode.WRN_DynamicDispatchToParamsCollectionIndexer:
                 case ErrorCode.WRN_DynamicDispatchToParamsCollectionConstructor:
 
+                case ErrorCode.WRN_TooManyBoundLambdas:
                     return 1;
                 default:
                     return 0;
@@ -2431,6 +2432,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case ErrorCode.ERR_ParamsCollectionExtensionAddMethod:
                 case ErrorCode.ERR_ParamsCollectionMissingConstructor:
                 case ErrorCode.ERR_NoModifiersOnUsing:
+                case ErrorCode.WRN_TooManyBoundLambdas:
                     return false;
                 default:
                     // NOTE: All error codes must be explicitly handled in this switch statement

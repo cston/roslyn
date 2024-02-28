@@ -495,6 +495,15 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        internal virtual BindingLogger? BindingLogger
+        {
+            get
+            {
+                RoslynDebug.Assert(Next is object);
+                return this.Next.BindingLogger;
+            }
+        }
+
         private Conversions? _lazyConversions;
         internal Conversions Conversions
         {

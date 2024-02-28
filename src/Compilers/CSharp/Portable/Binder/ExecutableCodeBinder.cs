@@ -5,16 +5,47 @@
 #nullable disable
 
 using Microsoft.CodeAnalysis.CSharp.Symbols;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.PooledObjects;
-using Roslyn.Utilities;
 using System;
-using System.Collections.Immutable;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 
 namespace Microsoft.CodeAnalysis.CSharp
 {
+    // PROTOTYPE: Move to separate file.
+    internal abstract class BindingLogger
+    {
+        internal abstract void LogLambdaBinding(SyntaxNode syntax, int lambdaBindingCount, int unboundLambdaStateCount);
+    }
+
+    internal sealed class CountingBindingLogger : BindingLogger
+    {
+        private readonly ConcurrentDictionary<SyntaxNode, (int, int)> _lambdaBinding = new ConcurrentDictionary<SyntaxNode, (int, int)>();
+
+        internal override void LogLambdaBinding(SyntaxNode syntax, int lambdaBindingCount, int unboundLambdaStateCount)
+        {
+            _lambdaBinding.AddOrUpdate(
+                syntax,
+                (lambdaBindingCount, unboundLambdaStateCount),
+                (SyntaxNode syntax, (int, int) previous) => (previous.Item1 + lambdaBindingCount, previous.Item2 + unboundLambdaStateCount));
+        }
+
+        internal void GetLambdaBinding(ArrayBuilder<(SyntaxNode, int, int)> builder)
+        {
+            Debug.Assert(builder.Count == 0);
+
+            foreach (var pair in _lambdaBinding)
+            {
+                builder.Add((pair.Key, pair.Value.Item1, pair.Value.Item2));
+            }
+
+            builder.Sort((x, y) => getPosition(x.Item1) - getPosition(y.Item1));
+
+            static int getPosition(SyntaxNode syntax) => syntax.Location.SourceSpan.Start;
+        }
+    }
+
     /// <summary>
     /// This binder owns and lazily creates the map of SyntaxNodes to Binders associated with
     /// the syntax with which it is created. This binder is not created in reaction to any
@@ -43,6 +74,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             _memberSymbol = memberSymbol;
             _root = root;
+            BindingLogger = next.BindingLogger ?? new CountingBindingLogger();
         }
 
         internal override Symbol ContainingMemberOrLambda
@@ -54,6 +86,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             => true;
 
         internal Symbol MemberSymbol { get { return _memberSymbol; } }
+
+        internal override BindingLogger BindingLogger { get; }
 
         internal override Binder GetBinder(SyntaxNode node)
         {

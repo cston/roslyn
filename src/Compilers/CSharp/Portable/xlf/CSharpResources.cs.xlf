@@ -4928,6 +4928,16 @@
         <target state="translated">Vyvolaná hodnota může být null.</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas">
+        <source>Too many bound lambdas: bound {0}, unbound {1}.</source>
+        <target state="new">Too many bound lambdas: bound {0}, unbound {1}.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas_Title">
+        <source>Too many bound lambdas.</source>
+        <target state="new">Too many bound lambdas.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_TopLevelNullabilityMismatchInParameterTypeOnExplicitImplementation">
         <source>Nullability of reference types in type of parameter '{0}' doesn't match implemented member '{1}' (possibly because of nullability attributes).</source>
         <target state="translated">Typ odkazu s možnou hodnotou null v typu parametru {0} neodpovídá implementovanému členu {1} (pravděpodobně kvůli atributům možnosti použití hodnoty null).</target>

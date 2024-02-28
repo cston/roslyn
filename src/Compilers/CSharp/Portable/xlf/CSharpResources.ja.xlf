@@ -4928,6 +4928,16 @@
         <target state="translated">スローされた値が null である可能性があります。</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas">
+        <source>Too many bound lambdas: bound {0}, unbound {1}.</source>
+        <target state="new">Too many bound lambdas: bound {0}, unbound {1}.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas_Title">
+        <source>Too many bound lambdas.</source>
+        <target state="new">Too many bound lambdas.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_TopLevelNullabilityMismatchInParameterTypeOnExplicitImplementation">
         <source>Nullability of reference types in type of parameter '{0}' doesn't match implemented member '{1}' (possibly because of nullability attributes).</source>
         <target state="translated">パラメーター '{0}' の型における参照型の NULL 値の許容が、実装されるメンバー '{1}' と一致しません。おそらく、NULL 値の許容の属性が原因です。</target>

@@ -4929,6 +4929,16 @@
         <target state="translated">Выданное значение может быть равно NULL.</target>
         <note />
       </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas">
+        <source>Too many bound lambdas: bound {0}, unbound {1}.</source>
+        <target state="new">Too many bound lambdas: bound {0}, unbound {1}.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="WRN_TooManyBoundLambdas_Title">
+        <source>Too many bound lambdas.</source>
+        <target state="new">Too many bound lambdas.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="WRN_TopLevelNullabilityMismatchInParameterTypeOnExplicitImplementation">
         <source>Nullability of reference types in type of parameter '{0}' doesn't match implemented member '{1}' (possibly because of nullability attributes).</source>
         <target state="translated">Допустимость значений NULL для ссылочных типов в типе параметра "{0}" не соответствует реализованному элементу "{1}" (возможно, из-за атрибутов допустимости значений NULL).</target>
