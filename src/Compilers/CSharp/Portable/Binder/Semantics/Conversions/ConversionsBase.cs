@@ -76,6 +76,8 @@ namespace Microsoft.CodeAnalysis.CSharp
 
 #nullable enable
         protected abstract Conversion GetCollectionExpressionConversion(BoundUnconvertedCollectionExpression source, TypeSymbol destination, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo);
+
+        public abstract Conversion GetCollectionExpressionElementConversion(BoundNode element, TypeSymbol elementType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo);
 #nullable disable
 
         protected abstract bool IsAttributeArgumentBinding { get; }

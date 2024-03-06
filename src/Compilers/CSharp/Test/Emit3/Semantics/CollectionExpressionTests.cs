@@ -22037,6 +22037,577 @@ partial class Program
                 """);
         }
 
+        [CombinatorialData]
+        [Theory]
+        public void ForEach_CollectionExpression_01([CombinatorialValues(TargetFramework.NetFramework, TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (var b in [false, true])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            bool includeOutput = ExecutionConditionUtil.IsMonoOrCoreClr == (targetFramework != TargetFramework.NetFramework);
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: targetFramework,
+                verify: Verification.Skipped,
+                expectedOutput: includeOutput ? "False, True, " : null);
+            if (targetFramework == TargetFramework.NetFramework)
+            {
+                // PROTOTYPE: Should the bool[] be in <PrivateImplementationDetails>?
+                verifier.VerifyIL("Program.Main",
+                    """
+                    {
+                      // Code size       46 (0x2e)
+                      .maxstack  4
+                      .locals init (bool[] V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  ldc.i4.2
+                      IL_0001:  newarr     "bool"
+                      IL_0006:  dup
+                      IL_0007:  ldc.i4.1
+                      IL_0008:  ldc.i4.1
+                      IL_0009:  stelem.i1
+                      IL_000a:  stloc.0
+                      IL_000b:  ldc.i4.0
+                      IL_000c:  stloc.1
+                      IL_000d:  br.s       IL_0027
+                      IL_000f:  ldloc.0
+                      IL_0010:  ldloc.1
+                      IL_0011:  ldelem.u1
+                      IL_0012:  stloc.2
+                      IL_0013:  ldstr      "{0}, "
+                      IL_0018:  ldloc.2
+                      IL_0019:  box        "bool"
+                      IL_001e:  call       "void System.Console.Write(string, object)"
+                      IL_0023:  ldloc.1
+                      IL_0024:  ldc.i4.1
+                      IL_0025:  add
+                      IL_0026:  stloc.1
+                      IL_0027:  ldloc.1
+                      IL_0028:  ldloc.0
+                      IL_0029:  ldlen
+                      IL_002a:  conv.i4
+                      IL_002b:  blt.s      IL_000f
+                      IL_002d:  ret
+                    }
+                    """);
+            }
+            else
+            {
+                // PROTOTYPE: Should use inline array on .NET 8, not on .NET 7.
+                verifier.VerifyIL("Program.Main",
+                    """
+                    {
+                      // Code size       58 (0x3a)
+                      .maxstack  3
+                      .locals init (System.ReadOnlySpan<bool> V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  ldloca.s   V_0
+                      IL_0002:  ldsflda    "short <PrivateImplementationDetails>.B413F47D13EE2FE6C845B2EE141AF81DE858DF4EC549A58B7970BB96645BC8D2"
+                      IL_0007:  ldc.i4.2
+                      IL_0008:  call       "System.ReadOnlySpan<bool>..ctor(void*, int)"
+                      IL_000d:  ldc.i4.0
+                      IL_000e:  stloc.1
+                      IL_000f:  br.s       IL_002f
+                      IL_0011:  ldloca.s   V_0
+                      IL_0013:  ldloc.1
+                      IL_0014:  call       "ref readonly bool System.ReadOnlySpan<bool>.this[int].get"
+                      IL_0019:  ldind.u1
+                      IL_001a:  stloc.2
+                      IL_001b:  ldstr      "{0}, "
+                      IL_0020:  ldloc.2
+                      IL_0021:  box        "bool"
+                      IL_0026:  call       "void System.Console.Write(string, object)"
+                      IL_002b:  ldloc.1
+                      IL_002c:  ldc.i4.1
+                      IL_002d:  add
+                      IL_002e:  stloc.1
+                      IL_002f:  ldloc.1
+                      IL_0030:  ldloca.s   V_0
+                      IL_0032:  call       "int System.ReadOnlySpan<bool>.Length.get"
+                      IL_0037:  blt.s      IL_0011
+                      IL_0039:  ret
+                    }
+                    """);
+            }
+        }
+
+        [CombinatorialData]
+        [Theory]
+        public void ForEach_CollectionExpression_02([CombinatorialValues(TargetFramework.NetFramework, TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (bool b in [])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            bool includeOutput = ExecutionConditionUtil.IsMonoOrCoreClr == (targetFramework != TargetFramework.NetFramework);
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: targetFramework,
+                verify: Verification.Skipped,
+                expectedOutput: includeOutput ? "" : null);
+            if (targetFramework == TargetFramework.NetFramework)
+            {
+                verifier.VerifyIL("Program.Main",
+                    """
+                    {
+                      // Code size       41 (0x29)
+                      .maxstack  2
+                      .locals init (bool[] V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  call       "bool[] System.Array.Empty<bool>()"
+                      IL_0005:  stloc.0
+                      IL_0006:  ldc.i4.0
+                      IL_0007:  stloc.1
+                      IL_0008:  br.s       IL_0022
+                      IL_000a:  ldloc.0
+                      IL_000b:  ldloc.1
+                      IL_000c:  ldelem.u1
+                      IL_000d:  stloc.2
+                      IL_000e:  ldstr      "{0}, "
+                      IL_0013:  ldloc.2
+                      IL_0014:  box        "bool"
+                      IL_0019:  call       "void System.Console.Write(string, object)"
+                      IL_001e:  ldloc.1
+                      IL_001f:  ldc.i4.1
+                      IL_0020:  add
+                      IL_0021:  stloc.1
+                      IL_0022:  ldloc.1
+                      IL_0023:  ldloc.0
+                      IL_0024:  ldlen
+                      IL_0025:  conv.i4
+                      IL_0026:  blt.s      IL_000a
+                      IL_0028:  ret
+                    }
+                    """);
+            }
+            else
+            {
+                verifier.VerifyIL("Program.Main",
+                    """
+                    {
+                      // Code size       53 (0x35)
+                      .maxstack  2
+                      .locals init (System.ReadOnlySpan<bool> V_0,
+                                    int V_1,
+                                    bool V_2) //b
+                      IL_0000:  ldloca.s   V_0
+                      IL_0002:  initobj    "System.ReadOnlySpan<bool>"
+                      IL_0008:  ldc.i4.0
+                      IL_0009:  stloc.1
+                      IL_000a:  br.s       IL_002a
+                      IL_000c:  ldloca.s   V_0
+                      IL_000e:  ldloc.1
+                      IL_000f:  call       "ref readonly bool System.ReadOnlySpan<bool>.this[int].get"
+                      IL_0014:  ldind.u1
+                      IL_0015:  stloc.2
+                      IL_0016:  ldstr      "{0}, "
+                      IL_001b:  ldloc.2
+                      IL_001c:  box        "bool"
+                      IL_0021:  call       "void System.Console.Write(string, object)"
+                      IL_0026:  ldloc.1
+                      IL_0027:  ldc.i4.1
+                      IL_0028:  add
+                      IL_0029:  stloc.1
+                      IL_002a:  ldloc.1
+                      IL_002b:  ldloca.s   V_0
+                      IL_002d:  call       "int System.ReadOnlySpan<bool>.Length.get"
+                      IL_0032:  blt.s      IL_000c
+                      IL_0034:  ret
+                    }
+                    """);
+            }
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_03()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        F<bool>();
+                    }
+                    static void F<T>() where T : new()
+                    {
+                        foreach (T t in [default, new()])
+                            Console.Write("{0}, ", t);
+                    }
+                }
+                """;
+            CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("False, False, "));
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_04()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (var b in [default, new()])
+                        {
+                        }
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics(
+                // (6,27): error CS8754: There is no target type for 'collection expressions'
+                //         foreach (var b in [default, new()])
+                Diagnostic(ErrorCode.ERR_ImplicitObjectCreationNoTargetType, "[default, new()]").WithArguments("collection expressions").WithLocation(6, 27));
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_05()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (bool? b in [false, true, null])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("False, True, , "));
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size      118 (0x76)
+                  .maxstack  2
+                  .locals init (<>y__InlineArray3<bool?> V_0,
+                                System.ReadOnlySpan<bool?> V_1,
+                                int V_2,
+                                bool? V_3) //b
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  initobj    "<>y__InlineArray3<bool?>"
+                  IL_0008:  ldloca.s   V_0
+                  IL_000a:  ldc.i4.0
+                  IL_000b:  call       "ref bool? <PrivateImplementationDetails>.InlineArrayElementRef<<>y__InlineArray3<bool?>, bool?>(ref <>y__InlineArray3<bool?>, int)"
+                  IL_0010:  ldc.i4.0
+                  IL_0011:  newobj     "bool?..ctor(bool)"
+                  IL_0016:  stobj      "bool?"
+                  IL_001b:  ldloca.s   V_0
+                  IL_001d:  ldc.i4.1
+                  IL_001e:  call       "ref bool? <PrivateImplementationDetails>.InlineArrayElementRef<<>y__InlineArray3<bool?>, bool?>(ref <>y__InlineArray3<bool?>, int)"
+                  IL_0023:  ldc.i4.1
+                  IL_0024:  newobj     "bool?..ctor(bool)"
+                  IL_0029:  stobj      "bool?"
+                  IL_002e:  ldloca.s   V_0
+                  IL_0030:  ldc.i4.2
+                  IL_0031:  call       "ref bool? <PrivateImplementationDetails>.InlineArrayElementRef<<>y__InlineArray3<bool?>, bool?>(ref <>y__InlineArray3<bool?>, int)"
+                  IL_0036:  initobj    "bool?"
+                  IL_003c:  ldloca.s   V_0
+                  IL_003e:  ldc.i4.3
+                  IL_003f:  call       "System.ReadOnlySpan<bool?> <PrivateImplementationDetails>.InlineArrayAsReadOnlySpan<<>y__InlineArray3<bool?>, bool?>(in <>y__InlineArray3<bool?>, int)"
+                  IL_0044:  stloc.1
+                  IL_0045:  ldc.i4.0
+                  IL_0046:  stloc.2
+                  IL_0047:  br.s       IL_006b
+                  IL_0049:  ldloca.s   V_1
+                  IL_004b:  ldloc.2
+                  IL_004c:  call       "ref readonly bool? System.ReadOnlySpan<bool?>.this[int].get"
+                  IL_0051:  ldobj      "bool?"
+                  IL_0056:  stloc.3
+                  IL_0057:  ldstr      "{0}, "
+                  IL_005c:  ldloc.3
+                  IL_005d:  box        "bool?"
+                  IL_0062:  call       "void System.Console.Write(string, object)"
+                  IL_0067:  ldloc.2
+                  IL_0068:  ldc.i4.1
+                  IL_0069:  add
+                  IL_006a:  stloc.2
+                  IL_006b:  ldloc.2
+                  IL_006c:  ldloca.s   V_1
+                  IL_006e:  call       "int System.ReadOnlySpan<bool?>.Length.get"
+                  IL_0073:  blt.s      IL_0049
+                  IL_0075:  ret
+                }
+                """);
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_06()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (string s in [1, 2, 3])
+                        {
+                        }
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics(
+                // (5,9): error CS0030: Cannot convert type 'int' to 'string'
+                //         foreach (string s in [1, 2, 3])
+                Diagnostic(ErrorCode.ERR_NoExplicitConv, "foreach").WithArguments("int", "string").WithLocation(5, 9));
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_07()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (byte b in [1, 2, 3])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("1, 2, 3, "));
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size       58 (0x3a)
+                  .maxstack  3
+                  .locals init (System.ReadOnlySpan<byte> V_0,
+                                int V_1,
+                                byte V_2) //b
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldsflda    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=3 <PrivateImplementationDetails>.039058C6F2C0CB492C533B0A4D14EF77CC0F78ABCCCED5287D84A1A2011CFB81"
+                  IL_0007:  ldc.i4.3
+                  IL_0008:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
+                  IL_000d:  ldc.i4.0
+                  IL_000e:  stloc.1
+                  IL_000f:  br.s       IL_002f
+                  IL_0011:  ldloca.s   V_0
+                  IL_0013:  ldloc.1
+                  IL_0014:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
+                  IL_0019:  ldind.u1
+                  IL_001a:  stloc.2
+                  IL_001b:  ldstr      "{0}, "
+                  IL_0020:  ldloc.2
+                  IL_0021:  box        "byte"
+                  IL_0026:  call       "void System.Console.Write(string, object)"
+                  IL_002b:  ldloc.1
+                  IL_002c:  ldc.i4.1
+                  IL_002d:  add
+                  IL_002e:  stloc.1
+                  IL_002f:  ldloc.1
+                  IL_0030:  ldloca.s   V_0
+                  IL_0032:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_0037:  blt.s      IL_0011
+                  IL_0039:  ret
+                }
+                """);
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_08()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (byte b in [1, ..[2, 3]])
+                            Console.Write("{0}, ", b);
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("1, 2, 3, "));
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size       58 (0x3a)
+                  .maxstack  3
+                  .locals init (System.ReadOnlySpan<byte> V_0,
+                                int V_1,
+                                byte V_2) //b
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldsflda    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=3 <PrivateImplementationDetails>.039058C6F2C0CB492C533B0A4D14EF77CC0F78ABCCCED5287D84A1A2011CFB81"
+                  IL_0007:  ldc.i4.3
+                  IL_0008:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
+                  IL_000d:  ldc.i4.0
+                  IL_000e:  stloc.1
+                  IL_000f:  br.s       IL_002f
+                  IL_0011:  ldloca.s   V_0
+                  IL_0013:  ldloc.1
+                  IL_0014:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
+                  IL_0019:  ldind.u1
+                  IL_001a:  stloc.2
+                  IL_001b:  ldstr      "{0}, "
+                  IL_0020:  ldloc.2
+                  IL_0021:  box        "byte"
+                  IL_0026:  call       "void System.Console.Write(string, object)"
+                  IL_002b:  ldloc.1
+                  IL_002c:  ldc.i4.1
+                  IL_002d:  add
+                  IL_002e:  stloc.1
+                  IL_002f:  ldloc.1
+                  IL_0030:  ldloca.s   V_0
+                  IL_0032:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_0037:  blt.s      IL_0011
+                  IL_0039:  ret
+                }
+                """);
+        }
+
+        [Fact]
+        public void ForEach_CollectionExpression_09()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        foreach (var i in [..[2, 3]])
+                            Console.Write("{0}, ", i);
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                source,
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("1, 2, 3, "));
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size       58 (0x3a)
+                  .maxstack  3
+                  .locals init (System.ReadOnlySpan<byte> V_0,
+                                int V_1,
+                                byte V_2) //b
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldsflda    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=3 <PrivateImplementationDetails>.039058C6F2C0CB492C533B0A4D14EF77CC0F78ABCCCED5287D84A1A2011CFB81"
+                  IL_0007:  ldc.i4.3
+                  IL_0008:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
+                  IL_000d:  ldc.i4.0
+                  IL_000e:  stloc.1
+                  IL_000f:  br.s       IL_002f
+                  IL_0011:  ldloca.s   V_0
+                  IL_0013:  ldloc.1
+                  IL_0014:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
+                  IL_0019:  ldind.u1
+                  IL_001a:  stloc.2
+                  IL_001b:  ldstr      "{0}, "
+                  IL_0020:  ldloc.2
+                  IL_0021:  box        "byte"
+                  IL_0026:  call       "void System.Console.Write(string, object)"
+                  IL_002b:  ldloc.1
+                  IL_002c:  ldc.i4.1
+                  IL_002d:  add
+                  IL_002e:  stloc.1
+                  IL_002f:  ldloc.1
+                  IL_0030:  ldloca.s   V_0
+                  IL_0032:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_0037:  blt.s      IL_0011
+                  IL_0039:  ret
+                }
+                """);
+        }
+
+        [CombinatorialData]
+        [Theory]
+        public void Spread_CollectionExpression_01([CombinatorialValues(TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        F().Report();
+                    }
+                    static int?[] F()
+                    {
+                        return [..[]];
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensions],
+                targetFramework: targetFramework,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[], "));
+            verifier.VerifyIL("Program.F",
+                """
+                {
+                  ...
+                }
+                """);
+        }
+
+        [CombinatorialData]
+        [Theory]
+        public void Spread_CollectionExpression_02([CombinatorialValues(TargetFramework.Net70, TargetFramework.Net80)] TargetFramework targetFramework)
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        F().Report();
+                    }
+                    static int?[] F()
+                    {
+                        return [..[2]];
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensions],
+                targetFramework: targetFramework,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[2], "));
+            // PROTOTYPE: Should use inline array on .NET 8, not on .NET 7.
+            verifier.VerifyIL("Program.F",
+                """
+                {
+                  ...
+                }
+                """);
+        }
+
         [ConditionalFact(typeof(DesktopOnly))]
         public void RestrictedTypes()
         {

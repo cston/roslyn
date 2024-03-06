@@ -220,45 +220,98 @@ namespace Microsoft.CodeAnalysis.CSharp
                 CheckFeatureAvailability(_syntax.AwaitKeyword, MessageID.IDS_FeatureAsyncStreams, diagnostics);
             }
 
+            bool isVar;
+            AliasSymbol alias;
+            TypeWithAnnotations declType;
+            if (_syntax.Kind() == SyntaxKind.ForEachStatement)
+            {
+                var node = (ForEachStatementSyntax)_syntax;
+
+                // If the type in syntax is "var", then the type should be set explicitly so that the
+                // Type property doesn't fail.
+
+                TypeSyntax typeSyntax = node.Type;
+
+                if (typeSyntax is ScopedTypeSyntax scopedType)
+                {
+                    // Check for support for 'scoped'.
+                    ModifierUtils.CheckScopedModifierAvailability(typeSyntax, scopedType.ScopedKeyword, diagnostics);
+                    typeSyntax = scopedType.Type;
+                }
+
+                if (typeSyntax is RefTypeSyntax refType)
+                {
+                    MessageID.IDS_FeatureRefForEach.CheckFeatureAvailability(diagnostics, typeSyntax);
+                    typeSyntax = refType.Type;
+                }
+
+                declType = BindTypeOrVarKeyword(typeSyntax, diagnostics, out isVar, out alias);
+            }
+            else
+            {
+                isVar = false;
+                alias = null;
+                declType = default;
+            }
+
             // Use the right binder to avoid seeing iteration variable
-            BoundExpression collectionExpr = originalBinder.GetBinder(_syntax.Expression).BindRValueWithoutTargetType(_syntax.Expression, diagnostics);
+            BoundExpression collectionExpr = originalBinder.GetBinder(_syntax.Expression).BindForEachCollection(_syntax.Expression, declType.Type, diagnostics);
+
+            // PROTOTYPE: What about async? await foreach (var i in [1, 2, await F()]) { }
+            // PROTOTYPE: What about deconstruction? foreach (var (x, y) in [(1, 2), (default, default)]) { ... }
+            // PROTOTYPE: Test with ref. foreach (ref var x in [...]) { }
 
             ForEachEnumeratorInfo.Builder builder;
             TypeWithAnnotations inferredType;
-            bool hasErrors = !GetEnumeratorInfoAndInferCollectionElementType(_syntax, _syntax.Expression, ref collectionExpr, isAsync: IsAsync, isSpread: false, diagnostics, out inferredType, out builder);
-
-            // These occur when special types are missing or malformed, or the patterns are incompletely implemented.
-            hasErrors |= builder.IsIncomplete;
-
+            bool hasErrors;
             BoundAwaitableInfo awaitInfo = null;
-            MethodSymbol getEnumeratorMethod = builder.GetEnumeratorInfo?.Method;
-            if (getEnumeratorMethod != null)
+            MethodSymbol getEnumeratorMethod;
+            bool usesInlineCollectionExpression = collectionExpr is BoundCollectionExpression { CollectionTypeKind: CollectionExpressionTypeKind.CompilerGenerated };
+
+            if (usesInlineCollectionExpression)
             {
-                originalBinder.CheckImplicitThisCopyInReadOnlyMember(collectionExpr, getEnumeratorMethod, diagnostics);
+                // PROTOTYPE: Check feature availability.
+                builder = default;
+                inferredType = TypeWithAnnotations.Create(collectionExpr.Type);
+                hasErrors = false;
+                getEnumeratorMethod = null;
+            }
+            else
+            {
+                hasErrors = !GetEnumeratorInfoAndInferCollectionElementType(_syntax, _syntax.Expression, ref collectionExpr, isAsync: IsAsync, isSpread: false, diagnostics, out inferredType, out builder);
 
-                if (getEnumeratorMethod.IsExtensionMethod && !hasErrors)
+                // These occur when special types are missing or malformed, or the patterns are incompletely implemented.
+                hasErrors |= builder.IsIncomplete;
+
+                getEnumeratorMethod = builder.GetEnumeratorInfo?.Method;
+                if (getEnumeratorMethod != null)
                 {
-                    var messageId = IsAsync ? MessageID.IDS_FeatureExtensionGetAsyncEnumerator : MessageID.IDS_FeatureExtensionGetEnumerator;
-                    messageId.CheckFeatureAvailability(diagnostics, Compilation, collectionExpr.Syntax.Location);
+                    originalBinder.CheckImplicitThisCopyInReadOnlyMember(collectionExpr, getEnumeratorMethod, diagnostics);
 
-                    if (getEnumeratorMethod.ParameterRefKinds is { IsDefault: false } refKinds && refKinds[0] == RefKind.Ref)
+                    if (getEnumeratorMethod.IsExtensionMethod && !hasErrors)
                     {
-                        Error(diagnostics, ErrorCode.ERR_RefLvalueExpected, collectionExpr.Syntax);
-                        hasErrors = true;
+                        var messageId = IsAsync ? MessageID.IDS_FeatureExtensionGetAsyncEnumerator : MessageID.IDS_FeatureExtensionGetEnumerator;
+                        messageId.CheckFeatureAvailability(diagnostics, Compilation, collectionExpr.Syntax.Location);
+
+                        if (getEnumeratorMethod.ParameterRefKinds is { IsDefault: false } refKinds && refKinds[0] == RefKind.Ref)
+                        {
+                            Error(diagnostics, ErrorCode.ERR_RefLvalueExpected, collectionExpr.Syntax);
+                            hasErrors = true;
+                        }
                     }
                 }
-            }
-            if (IsAsync)
-            {
-                var expr = _syntax.Expression;
-                ReportBadAwaitDiagnostics(_syntax.AwaitKeyword, diagnostics, ref hasErrors);
-                var placeholder = new BoundAwaitableValuePlaceholder(expr, builder.MoveNextInfo?.Method.ReturnType ?? CreateErrorType());
-                awaitInfo = BindAwaitInfo(placeholder, expr, diagnostics, ref hasErrors);
-
-                if (!hasErrors && awaitInfo.GetResult?.ReturnType.SpecialType != SpecialType.System_Boolean)
+                if (IsAsync)
                 {
-                    diagnostics.Add(ErrorCode.ERR_BadGetAsyncEnumerator, expr.Location, getEnumeratorMethod.ReturnTypeWithAnnotations, getEnumeratorMethod);
-                    hasErrors = true;
+                    var expr = _syntax.Expression;
+                    ReportBadAwaitDiagnostics(_syntax.AwaitKeyword, diagnostics, ref hasErrors);
+                    var placeholder = new BoundAwaitableValuePlaceholder(expr, builder.MoveNextInfo?.Method.ReturnType ?? CreateErrorType());
+                    awaitInfo = BindAwaitInfo(placeholder, expr, diagnostics, ref hasErrors);
+
+                    if (!hasErrors && awaitInfo.GetResult?.ReturnType.SpecialType != SpecialType.System_Boolean)
+                    {
+                        diagnostics.Add(ErrorCode.ERR_BadGetAsyncEnumerator, expr.Location, getEnumeratorMethod.ReturnTypeWithAnnotations, getEnumeratorMethod);
+                        hasErrors = true;
+                    }
                 }
             }
 
@@ -272,31 +325,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case SyntaxKind.ForEachStatement:
                     {
                         var node = (ForEachStatementSyntax)_syntax;
-                        // Check for local variable conflicts in the *enclosing* binder; obviously the *current*
-                        // binder has a local that matches!
-                        hasNameConflicts = originalBinder.ValidateDeclarationNameConflictsInScope(IterationVariable, diagnostics);
-
-                        // If the type in syntax is "var", then the type should be set explicitly so that the
-                        // Type property doesn't fail.
-
                         TypeSyntax typeSyntax = node.Type;
-
-                        if (typeSyntax is ScopedTypeSyntax scopedType)
-                        {
-                            // Check for support for 'scoped'.
-                            ModifierUtils.CheckScopedModifierAvailability(typeSyntax, scopedType.ScopedKeyword, diagnostics);
-                            typeSyntax = scopedType.Type;
-                        }
-
-                        if (typeSyntax is RefTypeSyntax refType)
-                        {
-                            MessageID.IDS_FeatureRefForEach.CheckFeatureAvailability(diagnostics, typeSyntax);
-                            typeSyntax = refType.Type;
-                        }
-
-                        bool isVar;
-                        AliasSymbol alias;
-                        TypeWithAnnotations declType = BindTypeOrVarKeyword(typeSyntax, diagnostics, out isVar, out alias);
 
                         if (isVar)
                         {
@@ -369,6 +398,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                         var node = (ForEachVariableStatementSyntax)_syntax;
                         iterationVariableType = inferredType.HasType ? inferredType : TypeWithAnnotations.Create(CreateErrorType("var"));
 
+                        // PROTOTYPE: Is foreach ((T t, U u) in [a, b, c]) { } target-typed? Unless we know the type we're
+                        // deconstructing from, we can't deconstruct, so this must not be target-typed. Add to spec.
                         var variables = node.Variable;
                         if (variables.IsDeconstructionLeft())
                         {
@@ -453,14 +484,17 @@ namespace Microsoft.CodeAnalysis.CSharp
             hasErrors |= hasNameConflicts;
 
             var foreachKeyword = _syntax.ForEachKeyword;
-            ReportDiagnosticsIfObsolete(diagnostics, getEnumeratorMethod, foreachKeyword, hasBaseReceiver: false);
-            ReportDiagnosticsIfUnmanagedCallersOnly(diagnostics, getEnumeratorMethod, foreachKeyword, isDelegateConversion: false);
-            // MoveNext is an instance method, so it does not need to have unmanaged callers only diagnostics reported.
-            // Either a diagnostic was reported at the declaration of the method (for the invalid attribute), or MoveNext
-            // is marked as not supported and we won't get here in the first place (for metadata import).
-            ReportDiagnosticsIfObsolete(diagnostics, builder.MoveNextInfo.Method, foreachKeyword, hasBaseReceiver: false);
-            ReportDiagnosticsIfObsolete(diagnostics, builder.CurrentPropertyGetter, foreachKeyword, hasBaseReceiver: false);
-            ReportDiagnosticsIfObsolete(diagnostics, builder.CurrentPropertyGetter.AssociatedSymbol, foreachKeyword, hasBaseReceiver: false);
+            if (!usesInlineCollectionExpression)
+            {
+                ReportDiagnosticsIfObsolete(diagnostics, getEnumeratorMethod, foreachKeyword, hasBaseReceiver: false);
+                ReportDiagnosticsIfUnmanagedCallersOnly(diagnostics, getEnumeratorMethod, foreachKeyword, isDelegateConversion: false);
+                // MoveNext is an instance method, so it does not need to have unmanaged callers only diagnostics reported.
+                // Either a diagnostic was reported at the declaration of the method (for the invalid attribute), or MoveNext
+                // is marked as not supported and we won't get here in the first place (for metadata import).
+                ReportDiagnosticsIfObsolete(diagnostics, builder.MoveNextInfo.Method, foreachKeyword, hasBaseReceiver: false);
+                ReportDiagnosticsIfObsolete(diagnostics, builder.CurrentPropertyGetter, foreachKeyword, hasBaseReceiver: false);
+                ReportDiagnosticsIfObsolete(diagnostics, builder.CurrentPropertyGetter.AssociatedSymbol, foreachKeyword, hasBaseReceiver: false);
+            }
 
             // We want to convert from inferredType in the array/string case and builder.ElementType in the enumerator case,
             // but it turns out that these are equivalent (when both are available).
@@ -516,6 +550,27 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             createConversionDiagnostics.Free();
+
+            if (usesInlineCollectionExpression)
+            {
+                diagnostics.Add(_syntax.ForEachKeyword, useSiteInfo); // PROTOTYPE: Test this.
+
+                return new BoundForEachStatement(
+                    _syntax,
+                    enumeratorInfoOpt: default,
+                    elementPlaceholder,
+                    elementConversion,
+                    boundIterationVariableType,
+                    iterationVariables,
+                    iterationErrorExpression,
+                    expression: collectionExpr,
+                    deconstructStep,
+                    awaitInfo,
+                    body,
+                    this.BreakLabel,
+                    this.ContinueLabel,
+                    hasErrors);
+            }
 
             // Spec (§8.8.4):
             // If the type X of expression is dynamic then there is an implicit conversion from >>expression<< (not the type of the expression) 

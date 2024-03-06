@@ -5204,7 +5204,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 builder.Add(bindElement(element, diagnostics, this, nestingLevel));
             }
-            return new BoundUnconvertedCollectionExpression(syntax, builder.ToImmutableAndFree());
+            var elements = builder.ToImmutableAndFree();
+            return new BoundUnconvertedCollectionExpression(syntax, inferredElementType: InferCollectionExpressionElementType(elements), elements);
 
             static BoundNode bindElement(CollectionElementSyntax syntax, BindingDiagnosticBag diagnostics, Binder @this, int nestingLevel)
             {
@@ -5272,6 +5273,44 @@ namespace Microsoft.CodeAnalysis.CSharp
                     iteratorBody: null,
                     hasErrors: false);
             }
+        }
+
+        internal BoundExpression BindForEachCollection(ExpressionSyntax syntax, TypeSymbol? elementType, BindingDiagnosticBag diagnostics)
+        {
+            BoundExpression expr = BindValue(syntax, diagnostics, BindValueKind.RValue);
+            if (expr is BoundUnconvertedCollectionExpression unconvertedCollection)
+            {
+                return ConvertCollectionExpressionElements(unconvertedCollection, elementType, diagnostics);
+            }
+            return BindToNaturalType(expr, diagnostics);
+        }
+
+        private TypeSymbol? InferCollectionExpressionElementType(ImmutableArray<BoundNode> elements)
+        {
+            // PROTOTYPE: Not handling spread elements.
+            var elementsNoSpreads = (ImmutableArray<BoundExpression>)elements.SelectAsArray(e => e as BoundExpression).WhereAsArray(e => e is { })!;
+
+            var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded; // PROTOTYPE: Include use-site diagnostics.
+            var bestType = BestTypeInferrer.InferBestType(elementsNoSpreads, Conversions, ref useSiteInfo, inferredFromFunctionType: out _);
+
+            if (bestType is null || bestType.IsVoidType()) // PROTOTYPE: Test void type.
+            {
+                return null;
+            }
+
+            // Check that each element (even those without a type) can be converted to the best type.
+            foreach (var element in elementsNoSpreads)
+            {
+                // PROTOTYPE: Test with elements that cannot be converted.
+                // PROTOTYPE: Test with elements without a type that can/cannot be converted.
+                // PROTOTYPE: Test with spread elements with/without a type.
+                if (!Conversions.ClassifyImplicitConversionFromExpression(element, bestType, ref useSiteInfo).Exists)
+                {
+                    return null;
+                }
+            }
+
+            return bestType;
         }
 #nullable disable
 

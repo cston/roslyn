@@ -203,7 +203,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             var builder = ArrayBuilder<Conversion>.GetInstance(elements.Length);
             foreach (var element in elements)
             {
-                Conversion elementConversion = convertElement(element, elementType, ref useSiteInfo);
+                Conversion elementConversion = GetCollectionExpressionElementConversion(element, elementType, ref useSiteInfo);
                 if (!elementConversion.Exists)
                 {
                     builder.Free();
@@ -214,15 +214,15 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             return Conversion.CreateCollectionExpressionConversion(collectionTypeKind, elementType, constructor, isExpanded, builder.ToImmutableAndFree());
+        }
 
-            Conversion convertElement(BoundNode element, TypeSymbol elementType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        public override Conversion GetCollectionExpressionElementConversion(BoundNode element, TypeSymbol elementType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        {
+            return element switch
             {
-                return element switch
-                {
-                    BoundCollectionExpressionSpreadElement spreadElement => GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo),
-                    _ => ClassifyImplicitConversionFromExpression((BoundExpression)element, elementType, ref useSiteInfo),
-                };
-            }
+                BoundCollectionExpressionSpreadElement spreadElement => GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo),
+                _ => ClassifyImplicitConversionFromExpression((BoundExpression)element, elementType, ref useSiteInfo),
+            };
         }
 
         internal Conversion GetCollectionExpressionSpreadElementConversion(

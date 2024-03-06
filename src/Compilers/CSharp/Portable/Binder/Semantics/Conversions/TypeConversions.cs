@@ -63,6 +63,12 @@ namespace Microsoft.CodeAnalysis.CSharp
             throw ExceptionUtilities.Unreachable();
         }
 
+        public override Conversion GetCollectionExpressionElementConversion(BoundNode element, TypeSymbol elementType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        {
+            // Conversions involving collection expressions require a Binder.
+            throw ExceptionUtilities.Unreachable();
+        }
+
         protected override CSharpCompilation Compilation => null;
 
         protected override bool IsAttributeArgumentBinding => false;

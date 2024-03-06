@@ -6403,24 +6403,26 @@ namespace Microsoft.CodeAnalysis.CSharp
 
     internal sealed partial class BoundUnconvertedCollectionExpression : BoundCollectionExpressionBase
     {
-        public BoundUnconvertedCollectionExpression(SyntaxNode syntax, ImmutableArray<BoundNode> elements, bool hasErrors = false)
+        public BoundUnconvertedCollectionExpression(SyntaxNode syntax, TypeSymbol? inferredElementType, ImmutableArray<BoundNode> elements, bool hasErrors = false)
             : base(BoundKind.UnconvertedCollectionExpression, syntax, elements, null, hasErrors || elements.HasErrors())
         {
 
             RoslynDebug.Assert(!elements.IsDefault, "Field 'elements' cannot be null (use Null=\"allow\" in BoundNodes.xml to remove this check)");
 
+            this.InferredElementType = inferredElementType;
         }
 
         public new TypeSymbol? Type => base.Type;
+        public TypeSymbol? InferredElementType { get; }
 
         [DebuggerStepThrough]
         public override BoundNode? Accept(BoundTreeVisitor visitor) => visitor.VisitUnconvertedCollectionExpression(this);
 
-        public BoundUnconvertedCollectionExpression Update(ImmutableArray<BoundNode> elements)
+        public BoundUnconvertedCollectionExpression Update(TypeSymbol? inferredElementType, ImmutableArray<BoundNode> elements)
         {
-            if (elements != this.Elements)
+            if (!TypeSymbol.Equals(inferredElementType, this.InferredElementType, TypeCompareKind.ConsiderEverything) || elements != this.Elements)
             {
-                var result = new BoundUnconvertedCollectionExpression(this.Syntax, elements, this.HasErrors);
+                var result = new BoundUnconvertedCollectionExpression(this.Syntax, inferredElementType, elements, this.HasErrors);
                 result.CopyAttributes(this);
                 return result;
             }
@@ -11771,8 +11773,9 @@ namespace Microsoft.CodeAnalysis.CSharp
         public override BoundNode? VisitUnconvertedCollectionExpression(BoundUnconvertedCollectionExpression node)
         {
             ImmutableArray<BoundNode> elements = this.VisitList(node.Elements);
+            TypeSymbol? inferredElementType = this.VisitType(node.InferredElementType);
             TypeSymbol? type = this.VisitType(node.Type);
-            return node.Update(elements);
+            return node.Update(inferredElementType, elements);
         }
         public override BoundNode? VisitCollectionExpression(BoundCollectionExpression node)
         {
@@ -14022,17 +14025,18 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         public override BoundNode? VisitUnconvertedCollectionExpression(BoundUnconvertedCollectionExpression node)
         {
+            TypeSymbol? inferredElementType = GetUpdatedSymbol(node, node.InferredElementType);
             ImmutableArray<BoundNode> elements = this.VisitList(node.Elements);
             BoundUnconvertedCollectionExpression updatedNode;
 
             if (_updatedNullabilities.TryGetValue(node, out (NullabilityInfo Info, TypeSymbol? Type) infoAndType))
             {
-                updatedNode = node.Update(elements);
+                updatedNode = node.Update(inferredElementType, elements);
                 updatedNode.TopLevelNullability = infoAndType.Info;
             }
             else
             {
-                updatedNode = node.Update(elements);
+                updatedNode = node.Update(inferredElementType, elements);
             }
             return updatedNode;
         }
@@ -16459,6 +16463,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         );
         public override TreeDumperNode VisitUnconvertedCollectionExpression(BoundUnconvertedCollectionExpression node, object? arg) => new TreeDumperNode("unconvertedCollectionExpression", null, new TreeDumperNode[]
         {
+            new TreeDumperNode("inferredElementType", node.InferredElementType, null),
             new TreeDumperNode("elements", null, from x in node.Elements select Visit(x, null)),
             new TreeDumperNode("type", node.Type, null),
             new TreeDumperNode("isSuppressed", node.IsSuppressed, null),

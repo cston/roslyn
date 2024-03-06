@@ -7893,7 +7893,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                         }
                     }
 
-                    return new BoundUnconvertedCollectionExpression(collection.Syntax, elementsBuilder.ToImmutableAndFree()) { WasCompilerGenerated = true };
+                    // PROTOTYPE: Do we need to infer element type?
+                    return new BoundUnconvertedCollectionExpression(collection.Syntax, inferredElementType: null, elementsBuilder.ToImmutableAndFree()) { WasCompilerGenerated = true };
                 }
 
                 // Note: for `out` arguments, the argument result contains the declaration type (see `VisitArgumentEvaluate`)
@@ -10754,7 +10755,9 @@ namespace Microsoft.CodeAnalysis.CSharp
             if (node.Expression.Kind != BoundKind.Conversion)
             {
                 // If we're in this scenario, there was a binding error, and we should suppress any further warnings.
-                Debug.Assert(node.HasErrors);
+                // PROTOTYPE: Do we expect collection expressions here that aren't
+                // wrapped in a conversion, other than in error cases? If not, revert this.
+                Debug.Assert(node.HasErrors || node.Expression.Kind == BoundKind.CollectionExpression);
                 VisitRvalue(node.Expression);
                 Visit(node.AwaitOpt);
                 return;

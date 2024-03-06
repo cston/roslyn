@@ -85,6 +85,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                         return VisitCollectionBuilderCollectionExpression(node);
                     case CollectionExpressionTypeKind.ArrayInterface:
                         return VisitListInterfaceCollectionExpression(node);
+                    case CollectionExpressionTypeKind.CompilerGenerated:
+                        // PROTOTYPE: Allow other types and other rewrite approaches.
+                        Debug.Assert(node.Type.IsSZArray() || ConversionsBase.IsSpanOrListType(_compilation, node.Type, WellKnownType.System_ReadOnlySpan_T, out _));
+                        return VisitArrayOrSpanCollectionExpression(node, CollectionExpressionTypeKind.ReadOnlySpan, node.Type, TypeWithAnnotations.Create(elementType));
                     default:
                         throw ExceptionUtilities.UnexpectedValue(collectionTypeKind);
                 }

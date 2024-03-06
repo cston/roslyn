@@ -126,10 +126,16 @@ namespace Microsoft.CodeAnalysis
         /// </summary>
         internal const SymbolKind FunctionType = (SymbolKind)255;
 
+        /// <summary>
+        /// Internal Symbol representing the inferred type of a collection expression.
+        /// </summary>
+        internal const SymbolKind CollectionType = (SymbolKind)254;
+
 #if DEBUG
         static SymbolKindInternal()
         {
             Debug.Assert(!EnumUtilities.ContainsValue(FunctionType));
+            Debug.Assert(!EnumUtilities.ContainsValue(CollectionType));
         }
 #endif
     }
