@@ -2624,7 +2624,7 @@
     </Field>
     <Field Name="Statement" Type="StatementSyntax" Override="true"/>
   </Node>
-  <!-- We name this "DeclarationForEachStatementSyntax" because it can express existing foreach
+  <!-- We name this "ForEachVariableStatementSyntax" because it can express existing foreach
        loops. We may elect to represent all foreach loops using this node and deprecate (stop parsing
        into) the old one. -->
   <Node Name="ForEachVariableStatementSyntax" Base="CommonForEachStatementSyntax">

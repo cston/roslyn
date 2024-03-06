@@ -940,32 +940,15 @@ namespace Microsoft.CodeAnalysis.CSharp
                     _ = GetWellKnownTypeMember(WellKnownMember.System_Collections_Generic_List_T__ToArray, diagnostics, syntax: syntax);
                 }
 
-                var elementConversions = conversion.UnderlyingConversions;
-
                 Debug.Assert(elementType is { });
-                Debug.Assert(elements.Length == elementConversions.Length);
-                Debug.Assert(elementConversions.All(c => c.Exists));
 
-                for (int i = 0; i < elements.Length; i++)
-                {
-                    var element = elements[i];
-                    var elementConversion = elementConversions[i];
-                    var convertedElement = element is BoundCollectionExpressionSpreadElement spreadElement ?
-                        bindSpreadElement(
-                            spreadElement,
-                            elementType,
-                            elementConversion,
-                            diagnostics) :
-                        CreateConversion(
-                            element.Syntax,
-                            (BoundExpression)element,
-                            elementConversion,
-                            isCast: false,
-                            conversionGroupOpt: null,
-                            destination: elementType,
-                            diagnostics);
-                    builder.Add(convertedElement!);
-                }
+                ConvertCollectionExpressionElements(
+                    syntax,
+                    builder,
+                    elementType,
+                    elements,
+                    conversion.UnderlyingConversions,
+                    diagnostics);
                 conversion.MarkUnderlyingConversionsChecked();
             }
 
@@ -982,6 +965,40 @@ namespace Microsoft.CodeAnalysis.CSharp
                 builder.ToImmutableAndFree(),
                 targetType)
             { WasCompilerGenerated = node.IsParamsArrayOrCollection, IsParamsArrayOrCollection = node.IsParamsArrayOrCollection };
+        }
+
+        private void ConvertCollectionExpressionElements(
+            SyntaxNode syntax,
+            ArrayBuilder<BoundNode> builder,
+            TypeSymbol elementType,
+            ImmutableArray<BoundNode> elements,
+            ImmutableArray<Conversion> elementConversions,
+            BindingDiagnosticBag diagnostics)
+        {
+            Debug.Assert(elementType is { });
+            Debug.Assert(elements.Length == elementConversions.Length);
+            Debug.Assert(elementConversions.All(c => c.Exists));
+
+            for (int i = 0; i < elements.Length; i++)
+            {
+                var element = elements[i];
+                var elementConversion = elementConversions[i];
+                var convertedElement = element is BoundCollectionExpressionSpreadElement spreadElement ?
+                    bindSpreadElement(
+                        spreadElement,
+                        elementType,
+                        elementConversion,
+                        diagnostics) :
+                    CreateConversion(
+                        element.Syntax,
+                        (BoundExpression)element,
+                        elementConversion,
+                        isCast: false,
+                        conversionGroupOpt: null,
+                        destination: elementType,
+                        diagnostics);
+                builder.Add(convertedElement!);
+            }
 
             BoundNode bindSpreadElement(BoundCollectionExpressionSpreadElement element, TypeSymbol elementType, Conversion elementConversion, BindingDiagnosticBag diagnostics)
             {
@@ -1007,6 +1024,80 @@ namespace Microsoft.CodeAnalysis.CSharp
                     iteratorBody: new BoundExpressionStatement(syntax, convertElement) { WasCompilerGenerated = true },
                     lengthOrCount: element.LengthOrCount);
             }
+        }
+
+        private BoundExpression ConvertCollectionExpressionElements(
+            BoundUnconvertedCollectionExpression node,
+            TypeSymbol? elementType,
+            BindingDiagnosticBag diagnostics)
+        {
+            var syntax = node.Syntax;
+            var conversion = ConvertCollectionExpressionElementsConversionOnly(node, elementType, diagnostics);
+            var collectionType = getCollectionType(Compilation, TypeWithAnnotations.Create(elementType)); // PROTOTYPE: Ignoring element nullability.
+            ReportUseSite(collectionType, diagnostics, syntax);
+            var collectionExpression = ConvertCollectionExpression(node, collectionType, conversion, diagnostics);
+            return new BoundConversion(
+                syntax,
+                collectionExpression,
+                conversion,
+                @checked: CheckOverflowAtRuntime,
+                explicitCastInCode: false,
+                conversionGroupOpt: null,
+                constantValueOpt: null,
+                type: collectionType);
+
+            static TypeSymbol getCollectionType(CSharpCompilation compilation, TypeWithAnnotations elementType)
+            {
+                // PROTOTYPE: Shouldn't use ReadOnlySpan<T> in an async context,
+                // nor when the element type is a ref struct or a pointer type.
+                // PROTOTYPE: Should fallback to T[] if inline array is not available. Add to spec.
+                var spanType = compilation.GetWellKnownType(WellKnownType.System_ReadOnlySpan_T);
+                if (!spanType.IsErrorType())
+                {
+                    return spanType.Construct([elementType]);
+                }
+
+                return ArrayTypeSymbol.CreateSZArray(compilation.SourceAssembly, elementType);
+            }
+        }
+
+        private Conversion ConvertCollectionExpressionElementsConversionOnly(
+            BoundUnconvertedCollectionExpression node,
+            TypeSymbol? elementType,
+            BindingDiagnosticBag diagnostics)
+        {
+            var syntax = node.Syntax;
+
+            elementType ??= node.InferredElementType;
+
+            // PROTOTYPE: Test with no element type.
+            if (elementType is null)
+            {
+                return Conversion.NoConversion;
+            }
+
+            var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
+            var elements = node.Elements;
+            var elementConversions = ArrayBuilder<Conversion>.GetInstance(elements.Length);
+            foreach (var element in elements)
+            {
+                Conversion elementConversion = Conversions.GetCollectionExpressionElementConversion(element, elementType, ref useSiteInfo);
+                // PROTOTYPE: We're dropping useSiteInfo.
+                if (!elementConversion.Exists)
+                {
+                    GenerateImplicitConversionError(diagnostics, element.Syntax, elementConversion, /*PROTOTYPE: Handle spreads.*/(BoundExpression)element, elementType);
+                    elementConversions.Free();
+                    return Conversion.NoConversion;
+                }
+                elementConversions.Add(elementConversion);
+            }
+
+            return Conversion.CreateCollectionExpressionConversion(
+                CollectionExpressionTypeKind.CompilerGenerated,
+                elementType,
+                constructor: null,
+                constructorUsedInExpandedForm: false,
+                elementConversions.ToImmutableAndFree());
         }
 
         private bool HasCollectionInitializerTypeInProgress(SyntaxNode syntax, TypeSymbol targetType)

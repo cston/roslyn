@@ -1738,7 +1738,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     MessageID.IDS_FeatureParamsCollections.CheckFeatureAvailability(diagnostics, node);
                 }
 
-                var unconvertedCollection = new BoundUnconvertedCollectionExpression(node, ImmutableArray<BoundNode>.CastUp(collectionArgs)) { WasCompilerGenerated = true, IsParamsArrayOrCollection = true };
+                var unconvertedCollection = new BoundUnconvertedCollectionExpression(node, inferredElementType: null, ImmutableArray<BoundNode>.CastUp(collectionArgs)) { WasCompilerGenerated = true, IsParamsArrayOrCollection = true };
                 CompoundUseSiteInfo<AssemblySymbol> useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
                 Conversion conversion = Conversions.ClassifyImplicitConversionFromExpression(unconvertedCollection, collectionType, ref useSiteInfo);
                 diagnostics.Add(node, useSiteInfo);
@@ -1753,7 +1753,59 @@ namespace Microsoft.CodeAnalysis.CSharp
                 else
                 {
                     Debug.Assert(conversion.IsCollectionExpression);
-                    converted = ConvertCollectionExpression(unconvertedCollection, collectionType, conversion, diagnostics);
+
+                    bool infiniteRecursion = false;
+                    if (conversion.GetCollectionExpressionTypeKind(out _, out MethodSymbol? constructor, out bool isExpanded) == CollectionExpressionTypeKind.ImplementsIEnumerable &&
+                        isExpanded)
+                    {
+                        Debug.Assert(constructor is not null);
+
+                        // Check for infinite recursion through the constructor
+                        var constructorSet = PooledHashSet<MethodSymbol>.GetInstance();
+                        constructorSet.Add(constructor.OriginalDefinition);
+
+                        BoundUnconvertedCollectionExpression? emptyCollection = null;
+
+                        while (true)
+                        {
+                            var paramsType = constructor.Parameters[^1].Type;
+                            if (!paramsType.IsSZArray())
+                            {
+                                var discardedUseSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded;
+                                emptyCollection ??= new BoundUnconvertedCollectionExpression(node, inferredElementType: null, ImmutableArray<BoundNode>.CastUp(ImmutableArray<BoundExpression>.Empty)) { WasCompilerGenerated = true, IsParamsArrayOrCollection = true };
+                                Conversion nextConversion = Conversions.ClassifyImplicitConversionFromExpression(emptyCollection, paramsType, ref discardedUseSiteInfo);
+
+                                if (nextConversion.Exists &&
+                                    nextConversion.GetCollectionExpressionTypeKind(out _, out constructor, out isExpanded) == CollectionExpressionTypeKind.ImplementsIEnumerable &&
+                                    isExpanded)
+                                {
+                                    Debug.Assert(constructor is not null);
+
+                                    if (constructorSet.Add(constructor.OriginalDefinition))
+                                    {
+                                        continue;
+                                    }
+
+                                    infiniteRecursion = true;
+                                }
+                            }
+
+                            break;
+                        }
+
+                        constructorSet.Free();
+                    }
+
+                    if (infiniteRecursion)
+                    {
+                        Debug.Assert(constructor is not null);
+                        Error(diagnostics, ErrorCode.ERR_ParamsCollectionInfiniteChainOfConstructorCalls, node, collectionType, constructor.OriginalDefinition);
+                        converted = BindCollectionExpressionForErrorRecovery(unconvertedCollection, collectionType, inConversion: true, diagnostics);
+                    }
+                    else
+                    {
+                        converted = ConvertCollectionExpression(unconvertedCollection, collectionType, conversion, diagnostics);
+                    }
                 }
 
                 collection = new BoundConversion(
