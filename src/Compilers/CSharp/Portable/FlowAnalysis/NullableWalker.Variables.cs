@@ -6,8 +6,10 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Linq;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Microsoft.CodeAnalysis.PooledObjects;
+using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp
 {
@@ -59,6 +61,36 @@ namespace Microsoft.CodeAnalysis.CSharp
             internal bool TryGetType(Symbol symbol, out TypeWithAnnotations type)
             {
                 return VariableTypes.TryGetValue(symbol, out type);
+            }
+
+            public bool Equals(VariablesSnapshot? other)
+            {
+                if (other is null)
+                {
+                    return false;
+                }
+                // PROTOTYPE: Test with non-null Container.
+                var result = Id == other.Id &&
+                    VariableTypes.SequenceEqual(
+                        other.VariableTypes,
+                        (x, y) => ReferenceEquals(x.Key, y.Key) && ReferenceEquals(x.Value.Type, y.Value.Type));
+                if (Container is { })
+                {
+                    result = result && Container.Equals(other.Container!);
+                }
+                return result;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                throw ExceptionUtilities.Unreachable();
+            }
+
+            public override int GetHashCode()
+            {
+                return Id;
+                //return Hash.Combine(Id,
+                //    Hash.CombineValues(VariableTypes));
             }
 
             private string GetDebuggerDisplay()

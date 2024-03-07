@@ -64,6 +64,24 @@ namespace Microsoft.CodeAnalysis.CSharp
                 Variables = variables;
                 VariableNullableStates = variableNullableStates;
             }
+
+            public bool Equals(VariableState other)
+            {
+                return Variables.Equals(other.Variables) &&
+                    VariableNullableStates.Equals(other.VariableNullableStates);
+            }
+
+            public override bool Equals(object? obj)
+            {
+                throw ExceptionUtilities.Unreachable();
+            }
+
+            public override int GetHashCode()
+            {
+                return Hash.Combine(
+                    Variables.GetHashCode(),
+                    VariableNullableStates.GetHashCode());
+            }
         }
 
         /// <summary>
@@ -455,6 +473,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             Binder binder,
             Conversions conversions,
             Variables? variables,
+            Dictionary<(BoundLambda, NullableWalker.VariableState), UnboundLambda> unboundLambdas,
             MethodSymbol? baseOrThisInitializer,
             ArrayBuilder<(BoundReturnStatement, TypeWithAnnotations)>? returnTypesOpt,
             ImmutableDictionary<BoundExpression, (NullabilityInfo, TypeSymbol?)>.Builder? analyzedNullabilityMapOpt,
@@ -466,6 +485,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             Debug.Assert(baseOrThisInitializer is null or { MethodKind: MethodKind.Constructor });
 
             _variables = variables ?? Variables.Create(symbol);
+            _unboundLambdas = unboundLambdas;
             _binder = binder;
             _conversions = (Conversions)conversions.WithNullability(true);
             _useConstructorExitWarnings = useConstructorExitWarnings;
@@ -1569,6 +1589,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 binder,
                 binder.Conversions,
                 Variables.Create(variables),
+                unboundLambdas: new(UnboundLambdaKeyComparer.Instance),
                 baseOrThisInitializer: null,
                 returnTypesOpt: null,
                 analyzedNullabilities,
@@ -1670,10 +1691,22 @@ namespace Microsoft.CodeAnalysis.CSharp
             Conversions conversions,
             DiagnosticBag diagnostics,
             MethodSymbol? delegateInvokeMethodOpt,
+            Dictionary<(BoundLambda, VariableState), UnboundLambda> unboundLambdas,
             VariableState initialState,
             ArrayBuilder<(BoundReturnStatement, TypeWithAnnotations)>? returnTypesOpt)
         {
             var symbol = lambda.Symbol;
+            // PROTOTYPE: Remove this.
+            if (unboundLambdas.Count > 0)
+            {
+                var key = (lambda, initialState);
+                if (unboundLambdas.ContainsKey(key))
+                {
+                }
+            }
+            // PROTOTYPE: This Create call is the issue. If we've already created a Variables
+            // instance for this (initialState, symbol), then the analysis has already been done,
+            // and the caller shouldn't have needed to call Analyze().
             var variables = Variables.Create(initialState.Variables).CreateNestedMethodScope(symbol);
             UseDelegateInvokeParameterAndReturnTypes(lambda, delegateInvokeMethodOpt, out bool useDelegateInvokeParameterTypes, out bool useDelegateInvokeReturnType);
             var walker = new NullableWalker(
@@ -1687,6 +1720,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 lambda.Binder,
                 conversions,
                 variables,
+                unboundLambdas,
                 baseOrThisInitializer: null,
                 returnTypesOpt,
                 analyzedNullabilityMapOpt: null,
@@ -1733,6 +1767,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                                             binder,
                                             conversions,
                                             initialState is null ? null : Variables.Create(initialState.Variables),
+                                            unboundLambdas: new(UnboundLambdaKeyComparer.Instance),
                                             baseOrThisInitializer,
                                             returnTypesOpt,
                                             analyzedNullabilityMapOpt,
@@ -4600,6 +4635,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                                             binder,
                                             conversions: conversions,
                                             variables: null,
+                                            unboundLambdas: null!, // PROTOTYPE: Shouldn't require !.
                                             baseOrThisInitializer: null,
                                             returnTypesOpt: null,
                                             analyzedNullabilityMapOpt: null,
@@ -7765,9 +7801,37 @@ namespace Microsoft.CodeAnalysis.CSharp
                 return new BoundExpressionWithNullability(argument.Syntax, argument, argumentType.NullableAnnotation, argumentType.Type);
             }
 
-            static UnboundLambda getUnboundLambda(BoundLambda expr, VariableState variableState)
+            UnboundLambda getUnboundLambda(BoundLambda expr, VariableState variableState)
             {
-                return expr.UnboundLambda.WithNullableState(variableState);
+                var key = (expr, variableState);
+                if (!_unboundLambdas.TryGetValue(key, out var unboundLambda))
+                {
+                    unboundLambda = expr.UnboundLambda.WithNullableState(_unboundLambdas, variableState);
+                    _unboundLambdas.Add(key, unboundLambda);
+                }
+                return unboundLambda;
+            }
+        }
+
+        private readonly Dictionary<(BoundLambda, VariableState), UnboundLambda> _unboundLambdas;
+
+        private sealed class UnboundLambdaKeyComparer : IEqualityComparer<(BoundLambda, VariableState)>
+        {
+            internal static readonly UnboundLambdaKeyComparer Instance = new();
+
+            // PROTOTYPE: VariableState is potentially nested. Are we comparing those instances correctly?
+            public bool Equals((BoundLambda, VariableState) x, (BoundLambda, VariableState) y)
+            {
+                return x.Item1 == y.Item1 &&
+                    x.Item2.Equals(y.Item2);
+            }
+
+            public int GetHashCode([DisallowNull] (BoundLambda, VariableState) obj)
+            {
+                var result = Hash.Combine(
+                    obj.Item1.GetHashCode(),
+                    obj.Item2.GetHashCode());
+                return result;
             }
         }
 
@@ -11949,6 +12013,33 @@ namespace Microsoft.CodeAnalysis.CSharp
                 Id = id;
                 Container = container;
                 State = state;
+            }
+
+            public bool Equals(LocalStateSnapshot? other)
+            {
+                if (other is null)
+                {
+                    return false;
+                }
+                // PROTOTYPE: Test with non-null Container.
+                var result = Id == other.Id &&
+                    State.Equals(other.State);
+                if (Container is { })
+                {
+                    result = result && Container.Equals(other.Container!);
+                }
+                return result;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                throw ExceptionUtilities.Unreachable();
+            }
+
+            public override int GetHashCode()
+            {
+                return Hash.Combine(Id,
+                    State.GetHashCode());
             }
         }
 

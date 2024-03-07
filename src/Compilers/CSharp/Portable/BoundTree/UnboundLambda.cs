@@ -10,7 +10,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
-using Microsoft.CodeAnalysis.CSharp.Emit;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.PooledObjects;
@@ -106,7 +105,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         public TypeWithAnnotations GetInferredReturnType(ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo, out bool inferredFromFunctionType)
         {
             // Nullability (and conversions) are ignored.
-            return GetInferredReturnType(conversions: null, nullableState: null, ref useSiteInfo, out inferredFromFunctionType);
+            return GetInferredReturnType(conversions: null, unboundLambdas: null, nullableState: null, ref useSiteInfo, out inferredFromFunctionType);
         }
 
         /// <summary>
@@ -114,7 +113,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// uses that state to set the inferred nullability of variables in the enclosing scope. `conversions` is
         /// only needed when nullability is inferred.
         /// </summary>
-        public TypeWithAnnotations GetInferredReturnType(ConversionsBase? conversions, NullableWalker.VariableState? nullableState, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo, out bool inferredFromFunctionType)
+        public TypeWithAnnotations GetInferredReturnType(ConversionsBase? conversions, Dictionary<(BoundLambda, NullableWalker.VariableState), UnboundLambda>? unboundLambdas, NullableWalker.VariableState? nullableState, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo, out bool inferredFromFunctionType)
         {
             if (!InferredReturnType.UseSiteDiagnostics.IsEmpty)
             {
@@ -138,18 +137,21 @@ namespace Microsoft.CodeAnalysis.CSharp
                 Debug.Assert(conversions != null);
                 // Diagnostics from NullableWalker.Analyze can be dropped here since Analyze
                 // will be called again from NullableWalker.ApplyConversion when the
-                // BoundLambda is converted to an anonymous function.
+                // BoundLambda is converted to an anonymous function. // PROTOTYPE: Is this true? Are we calling Analyze() on this lambda body again?
                 // https://github.com/dotnet/roslyn/issues/31752: Can we avoid generating extra
-                // diagnostics? And is this exponential when there are nested lambdas?
+                // diagnostics? And is this exponential when there are nested lambdas? // PROTOTYPE: Remove this last sentence after fixing.
                 var returnTypes = ArrayBuilder<(BoundReturnStatement, TypeWithAnnotations)>.GetInstance();
                 var diagnostics = DiagnosticBag.GetInstance();
                 var delegateType = Type.GetDelegateType();
                 var compilation = Binder.Compilation;
+                // PROTOTYPE: Are we calling NullableWalker.Analyze() even in cases where
+                // we've cached this lambda and called Analyze() previously?
                 NullableWalker.Analyze(compilation,
                                        lambda: this,
                                        (Conversions)conversions,
                                        diagnostics,
                                        delegateInvokeMethodOpt: delegateType?.DelegateInvokeMethod,
+                                       unboundLambdas,
                                        initialState: nullableState,
                                        returnTypes);
                 diagnostics.Free();
@@ -385,6 +387,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
     internal partial class UnboundLambda
     {
+        private readonly Dictionary<(BoundLambda, NullableWalker.VariableState), UnboundLambda>? _unboundLambdas; // PROTOTYPE: Hide this beneath some type.
         private readonly NullableWalker.VariableState? _nullableState;
 
         public static UnboundLambda Create(
@@ -417,16 +420,17 @@ namespace Microsoft.CodeAnalysis.CSharp
             return lambda;
         }
 
-        private UnboundLambda(SyntaxNode syntax, UnboundLambdaState state, FunctionTypeSymbol? functionType, bool withDependencies, NullableWalker.VariableState? nullableState, bool hasErrors) :
+        private UnboundLambda(SyntaxNode syntax, UnboundLambdaState state, FunctionTypeSymbol? functionType, bool withDependencies, Dictionary<(BoundLambda, NullableWalker.VariableState), UnboundLambda>? unboundLambdas, NullableWalker.VariableState? nullableState, bool hasErrors) :
             this(syntax, state, functionType, withDependencies, hasErrors)
         {
+            this._unboundLambdas = unboundLambdas;
             this._nullableState = nullableState;
         }
 
-        internal UnboundLambda WithNullableState(NullableWalker.VariableState nullableState)
+        internal UnboundLambda WithNullableState(Dictionary<(BoundLambda, NullableWalker.VariableState), UnboundLambda> unboundLambdas, NullableWalker.VariableState nullableState)
         {
             var data = Data.WithCaching(true);
-            var lambda = new UnboundLambda(Syntax, data, FunctionType, WithDependencies, nullableState, HasErrors);
+            var lambda = new UnboundLambda(Syntax, data, FunctionType, WithDependencies, unboundLambdas, nullableState, HasErrors);
             data.SetUnboundLambda(lambda);
             return lambda;
         }
@@ -439,7 +443,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 return this;
             }
 
-            var lambda = new UnboundLambda(Syntax, data, FunctionType, WithDependencies, _nullableState, HasErrors);
+            var lambda = new UnboundLambda(Syntax, data, FunctionType, WithDependencies, _unboundLambdas, _nullableState, HasErrors);
             data.SetUnboundLambda(lambda);
             return lambda;
         }
@@ -466,7 +470,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         public bool HasExplicitlyTypedParameterList { get { return Data.HasExplicitlyTypedParameterList; } }
         public int ParameterCount { get { return Data.ParameterCount; } }
         public TypeWithAnnotations InferReturnType(ConversionsBase conversions, NamedTypeSymbol delegateType, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo, out bool inferredFromFunctionType)
-            => BindForReturnTypeInference(delegateType).GetInferredReturnType(conversions, _nullableState, ref useSiteInfo, out inferredFromFunctionType);
+            => BindForReturnTypeInference(delegateType).GetInferredReturnType(conversions, _unboundLambdas, _nullableState, ref useSiteInfo, out inferredFromFunctionType);
 
         public RefKind RefKind(int index) { return Data.RefKind(index); }
         public ScopedKind DeclaredScope(int index) { return Data.DeclaredScope(index); }
@@ -995,6 +999,11 @@ namespace Microsoft.CodeAnalysis.CSharp
                                                   parameterRefKinds,
                                                   refKind);
             var lambdaBodyBinder = new ExecutableCodeBinder(_unboundLambda.Syntax, lambdaSymbol, GetWithParametersBinder(lambdaSymbol, Binder));
+            // PROTOTYPE: This will be called as a result of UnboundLambda.BindForReturnTypeInference()
+            // in NullableWalker. That means that when inferring the return type in nullable analysis, we perform
+            // a full binding of the lambda body, including any overload resolution for calls with nested lambdas etc.
+            // That last part, including any overload resolution, is certainly unnecessary if we've already bound the
+            // overloads in initial binding, because overload resolution is not affected by nullable annotations.
             var block = BindLambdaBody(lambdaSymbol, lambdaBodyBinder, diagnostics);
             lambdaSymbol.GetDeclarationDiagnostics(diagnostics);
             return (lambdaSymbol, block, lambdaBodyBinder, diagnostics);

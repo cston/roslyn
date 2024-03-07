@@ -1779,17 +1779,17 @@ namespace Microsoft.CodeAnalysis.CSharp
                     var cache = (CountingBindingLogger?)bodyBinder.BindingLogger;
                     Debug.Assert(cache is { });
 
-                    var builder = ArrayBuilder<(SyntaxNode, int, int)>.GetInstance();
-                    cache.GetLambdaBinding(builder);
-                    foreach (var (syntax, lambdaBindingCount, unboundLambdaStateCount) in builder)
-                    {
-                        const int maxLambdas = 1;
-                        if (lambdaBindingCount > maxLambdas)
-                        {
-                            diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
-                        }
-                    }
-                    builder.Free();
+                    //var builder = ArrayBuilder<(SyntaxNode, int, int)>.GetInstance();
+                    //cache.GetLambdaBinding(builder);
+                    //foreach (var (syntax, lambdaBindingCount, unboundLambdaStateCount) in builder)
+                    //{
+                    //    const int maxLambdas = 1;
+                    //    if (lambdaBindingCount > maxLambdas)
+                    //    {
+                    //        diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
+                    //    }
+                    //}
+                    //builder.Free();
 
                     BoundNode methodBodyForSemanticModel = methodBody;
                     NullableWalker.SnapshotManager? snapshotManager = null;
@@ -1832,6 +1832,18 @@ namespace Microsoft.CodeAnalysis.CSharp
                                 finalNullableState: out _);
                         }
                     }
+
+                    var builder = ArrayBuilder<(SyntaxNode, int, int)>.GetInstance();
+                    cache.GetLambdaBinding(builder);
+                    foreach (var (syntax, lambdaBindingCount, unboundLambdaStateCount) in builder)
+                    {
+                        const int maxLambdas = 1;
+                        if (lambdaBindingCount > maxLambdas)
+                        {
+                            diagnostics.Add(ErrorCode.WRN_TooManyBoundLambdas, syntax, lambdaBindingCount, unboundLambdaStateCount);
+                        }
+                    }
+                    builder.Free();
 
                     forSemanticModel = new MethodBodySemanticModel.InitialState(syntaxNode, methodBodyForSemanticModel, bodyBinder, snapshotManager, remappedSymbols);
 
