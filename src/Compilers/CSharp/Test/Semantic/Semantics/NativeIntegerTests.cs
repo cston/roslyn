@@ -15863,5 +15863,154 @@ class C
 }
 ");
         }
+
+        [Fact]
+        public void ConvertToVoidPointer_IntPtr_CSharp9()
+        {
+            var source = """
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        System.IntPtr x = checked((System.IntPtr)(-1));
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular9, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            int size = System.IntPtr.Size;
+            CompileAndVerify(comp, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_IntPtr()
+        {
+            var source = """
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        System.IntPtr x = checked((System.IntPtr)(-1));
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            int size = System.IntPtr.Size;
+            CompileAndVerify(comp, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_IntPtr_Net70()
+        {
+            var source = """
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        System.IntPtr x = checked((System.IntPtr)(-1));
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.UnsafeReleaseExe, targetFramework: TargetFramework.Net70);
+            comp.VerifyEmitDiagnostics();
+            int size = System.IntPtr.Size;
+            CompileAndVerify(comp, verify: Verification.FailsPEVerify, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_Nint_CSharp9()
+        {
+            var source = """
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        nint x = -1;
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular9, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            int size = System.IntPtr.Size;
+            CompileAndVerify(comp, verify: Verification.FailsPEVerify, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_Nint()
+        {
+            var source = """
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        nint x = -1;
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            int size = System.IntPtr.Size;
+            CompileAndVerify(comp, verify: Verification.FailsPEVerify, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_Integer_CSharp9()
+        {
+            int size = System.IntPtr.Size;
+            string integerType = (size == 4) ? "int" : "long";
+            var source = $$"""
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        {{integerType}} x = {{integerType}}.MinValue;
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, parseOptions: TestOptions.Regular9, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, verify: Verification.FailsPEVerify, expectedOutput: size.ToString());
+        }
+
+        [Fact]
+        public void ConvertToVoidPointer_Integer()
+        {
+            int size = System.IntPtr.Size;
+            string integerType = (size == 4) ? "int" : "long";
+            var source = $$"""
+                using System;
+                unsafe class Program
+                {
+                    static void Main()
+                    {
+                        {{integerType}} x = {{integerType}}.MinValue;
+                        void* p = checked((void*)x);
+                        Console.WriteLine(sizeof(void*));
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, options: TestOptions.UnsafeReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, verify: Verification.FailsPEVerify, expectedOutput: size.ToString());
+        }
     }
 }
