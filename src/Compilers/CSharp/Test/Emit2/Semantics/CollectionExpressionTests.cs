@@ -23884,6 +23884,374 @@ partial class Program
                 Diagnostic(ErrorCode.ERR_MissingPredefinedMember, "[1, 2, 3]").WithArguments("System.ReadOnlySpan`1", ".ctor").WithLocation(6, 31));
         }
 
+        // PROTOTYPE: Share with _02.
+        [Fact]
+        public void RuntimeHelpers_PartialDeclaration_InitializeArray_01()
+        {
+            string sourceA = """
+                namespace System.Runtime.CompilerServices
+                {
+                    public static class RuntimeHelpers
+                    {
+                    }
+                }
+                """;
+            string sourceB = """
+                using System;
+                class Program
+                {
+                    static void Main(string[] args)
+                    {
+                        int[] a = new[] { 1, args.Length, 3, 4 };
+                        Console.WriteLine(a.Length);
+                    }
+                }
+                """;
+
+            var verifier = CompileAndVerify(sourceB, targetFramework: TargetFramework.Net80, verify: Verification.FailsPEVerify);
+            verifier.VerifyIL("Program.Main", """
+                {
+                  // Code size       31 (0x1f)
+                  .maxstack  4
+                  IL_0000:  ldc.i4.4
+                  IL_0001:  newarr     "int"
+                  IL_0006:  dup
+                  IL_0007:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=16 <PrivateImplementationDetails>.265170F5406AB98DD4B8146A10503D6A1BEA1173E0047E03443A8D7327B26FDD"
+                  IL_000c:  call       "void System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray(System.Array, System.RuntimeFieldHandle)"
+                  IL_0011:  dup
+                  IL_0012:  ldc.i4.1
+                  IL_0013:  ldarg.0
+                  IL_0014:  ldlen
+                  IL_0015:  conv.i4
+                  IL_0016:  stelem.i4
+                  IL_0017:  ldlen
+                  IL_0018:  conv.i4
+                  IL_0019:  call       "void System.Console.WriteLine(int)"
+                  IL_001e:  ret
+                }
+                """);
+
+            verifier = CompileAndVerify([sourceA, sourceB], targetFramework: TargetFramework.Net80, verify: Verification.FailsPEVerify);
+            verifier.VerifyIL("Program.Main", """
+                {
+                  // Code size       32 (0x20)
+                  .maxstack  4
+                  IL_0000:  ldc.i4.4
+                  IL_0001:  newarr     "int"
+                  IL_0006:  dup
+                  IL_0007:  ldc.i4.0
+                  IL_0008:  ldc.i4.1
+                  IL_0009:  stelem.i4
+                  IL_000a:  dup
+                  IL_000b:  ldc.i4.1
+                  IL_000c:  ldarg.0
+                  IL_000d:  ldlen
+                  IL_000e:  conv.i4
+                  IL_000f:  stelem.i4
+                  IL_0010:  dup
+                  IL_0011:  ldc.i4.2
+                  IL_0012:  ldc.i4.3
+                  IL_0013:  stelem.i4
+                  IL_0014:  dup
+                  IL_0015:  ldc.i4.3
+                  IL_0016:  ldc.i4.4
+                  IL_0017:  stelem.i4
+                  IL_0018:  ldlen
+                  IL_0019:  conv.i4
+                  IL_001a:  call       "void System.Console.WriteLine(int)"
+                  IL_001f:  ret
+                }
+                """);
+        }
+
+        [Fact]
+        public void RuntimeHelpers_PartialDeclaration_InitializeArray_02()
+        {
+            string sourceA = """
+                namespace System.Runtime.CompilerServices
+                {
+                    public static class RuntimeHelpers
+                    {
+                    }
+                }
+                """;
+            string sourceB = """
+                using System;
+                class Program
+                {
+                    static void Main(string[] args)
+                    {
+                        int[] a = [1, args.Length, 3, 4];
+                        Console.WriteLine(a.Length);
+                    }
+                }
+                """;
+
+            var verifier = CompileAndVerify(sourceB, targetFramework: TargetFramework.Net80, verify: Verification.FailsPEVerify);
+            verifier.VerifyIL("Program.Main", """
+                {
+                  // Code size       31 (0x1f)
+                  .maxstack  4
+                  IL_0000:  ldc.i4.4
+                  IL_0001:  newarr     "int"
+                  IL_0006:  dup
+                  IL_0007:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=16 <PrivateImplementationDetails>.265170F5406AB98DD4B8146A10503D6A1BEA1173E0047E03443A8D7327B26FDD"
+                  IL_000c:  call       "void System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray(System.Array, System.RuntimeFieldHandle)"
+                  IL_0011:  dup
+                  IL_0012:  ldc.i4.1
+                  IL_0013:  ldarg.0
+                  IL_0014:  ldlen
+                  IL_0015:  conv.i4
+                  IL_0016:  stelem.i4
+                  IL_0017:  ldlen
+                  IL_0018:  conv.i4
+                  IL_0019:  call       "void System.Console.WriteLine(int)"
+                  IL_001e:  ret
+                }
+                """);
+
+            verifier = CompileAndVerify([sourceA, sourceB], targetFramework: TargetFramework.Net80, verify: Verification.FailsPEVerify);
+            verifier.VerifyIL("Program.Main", """
+                {
+                  // Code size       32 (0x20)
+                  .maxstack  4
+                  IL_0000:  ldc.i4.4
+                  IL_0001:  newarr     "int"
+                  IL_0006:  dup
+                  IL_0007:  ldc.i4.0
+                  IL_0008:  ldc.i4.1
+                  IL_0009:  stelem.i4
+                  IL_000a:  dup
+                  IL_000b:  ldc.i4.1
+                  IL_000c:  ldarg.0
+                  IL_000d:  ldlen
+                  IL_000e:  conv.i4
+                  IL_000f:  stelem.i4
+                  IL_0010:  dup
+                  IL_0011:  ldc.i4.2
+                  IL_0012:  ldc.i4.3
+                  IL_0013:  stelem.i4
+                  IL_0014:  dup
+                  IL_0015:  ldc.i4.3
+                  IL_0016:  ldc.i4.4
+                  IL_0017:  stelem.i4
+                  IL_0018:  ldlen
+                  IL_0019:  conv.i4
+                  IL_001a:  call       "void System.Console.WriteLine(int)"
+                  IL_001f:  ret
+                }
+                """);
+        }
+
+        // PROTOTYPE: These tests also fails because GetInitArrayHelper() fails to find RuntimeHelpers.InitializeArray so these should be named _InitializeArray_* as well.
+        // PROTOTYPE: Share with _02.
+        [WorkItem("https://github.com/dotnet/roslyn/issues/73252")]
+        [Fact]
+        public void RuntimeHelpers_PartialDeclaration_CreateSpan_01()
+        {
+            string sourceA = """
+                namespace System.Runtime.CompilerServices
+                {
+                    public static class RuntimeHelpers
+                    {
+                    }
+                }
+                """;
+            string sourceB = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        ReadOnlySpan<int> s = new ReadOnlySpan<int>(new[] { 1, 2, 3 });
+                        Console.WriteLine(s.Length);
+                    }
+                }
+                """;
+
+            var comp = CreateCompilationWithSpanAndMemoryExtensions(sourceB, options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            var verifier = CompileAndVerify(comp);
+            verifier.VerifyIL("Program.Main",
+                ExecutionConditionUtil.IsCoreClr ?
+                """
+                {
+                  // Code size       24 (0x18)
+                  .maxstack  1
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12_Align=4 <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D4"
+                  IL_0005:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
+                  IL_000a:  stloc.0
+                  IL_000b:  ldloca.s   V_0
+                  IL_000d:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0012:  call       "void System.Console.WriteLine(int)"
+                  IL_0017:  ret
+                }
+                """ :
+                """
+                {
+                  // Code size       51 (0x33)
+                  .maxstack  3
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldsfld     "int[] <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D_A6"
+                  IL_0005:  dup
+                  IL_0006:  brtrue.s   IL_0020
+                  IL_0008:  pop
+                  IL_0009:  ldc.i4.3
+                  IL_000a:  newarr     "int"
+                  IL_000f:  dup
+                  IL_0010:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12 <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D"
+                  IL_0015:  call       "void System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray(System.Array, System.RuntimeFieldHandle)"
+                  IL_001a:  dup
+                  IL_001b:  stsfld     "int[] <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D_A6"
+                  IL_0020:  newobj     "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0025:  stloc.0
+                  IL_0026:  ldloca.s   V_0
+                  IL_0028:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_002d:  call       "void System.Console.WriteLine(int)"
+                  IL_0032:  ret
+                }
+                """);
+
+            comp = CreateCompilationWithSpanAndMemoryExtensions([sourceA, sourceB], options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            verifier = CompileAndVerify(comp);
+            // PROTOTYPE: Should we report missing RuntimeHelpers.InitializeArray rather than generating code that allocates?
+            // PROTOTYPE: Did we still create PrivateImplementationDetails in these cases?
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size       38 (0x26)
+                  .maxstack  5
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldc.i4.3
+                  IL_0003:  newarr     "int"
+                  IL_0008:  dup
+                  IL_0009:  ldc.i4.0
+                  IL_000a:  ldc.i4.1
+                  IL_000b:  stelem.i4
+                  IL_000c:  dup
+                  IL_000d:  ldc.i4.1
+                  IL_000e:  ldc.i4.2
+                  IL_000f:  stelem.i4
+                  IL_0010:  dup
+                  IL_0011:  ldc.i4.2
+                  IL_0012:  ldc.i4.3
+                  IL_0013:  stelem.i4
+                  IL_0014:  call       "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0019:  ldloca.s   V_0
+                  IL_001b:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0020:  call       "void System.Console.WriteLine(int)"
+                  IL_0025:  ret
+                }
+                """);
+        }
+
+        [WorkItem("https://github.com/dotnet/roslyn/issues/73252")]
+        [Fact]
+        public void RuntimeHelpers_PartialDeclaration_CreateSpan_02()
+        {
+            string sourceA = """
+                namespace System.Runtime.CompilerServices
+                {
+                    public static class RuntimeHelpers
+                    {
+                    }
+                }
+                """;
+            string sourceB = """
+                using System;
+                class Program
+                {
+                    static void Main()
+                    {
+                        ReadOnlySpan<int> s = [1, 2, 3];
+                        Console.WriteLine(s.Length);
+                    }
+                }
+                """;
+
+            var comp = CreateCompilationWithSpanAndMemoryExtensions(sourceB, options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            var verifier = CompileAndVerify(comp);
+            verifier.VerifyIL("Program.Main",
+                ExecutionConditionUtil.IsCoreClr ?
+                """
+                {
+                  // Code size       24 (0x18)
+                  .maxstack  1
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12_Align=4 <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D4"
+                  IL_0005:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
+                  IL_000a:  stloc.0
+                  IL_000b:  ldloca.s   V_0
+                  IL_000d:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0012:  call       "void System.Console.WriteLine(int)"
+                  IL_0017:  ret
+                }
+                """ :
+                """
+                {
+                  // Code size       51 (0x33)
+                  .maxstack  3
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldsfld     "int[] <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D_A6"
+                  IL_0005:  dup
+                  IL_0006:  brtrue.s   IL_0020
+                  IL_0008:  pop
+                  IL_0009:  ldc.i4.3
+                  IL_000a:  newarr     "int"
+                  IL_000f:  dup
+                  IL_0010:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=12 <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D"
+                  IL_0015:  call       "void System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray(System.Array, System.RuntimeFieldHandle)"
+                  IL_001a:  dup
+                  IL_001b:  stsfld     "int[] <PrivateImplementationDetails>.4636993D3E1DA4E9D6B8F87B79E8F7C6D018580D52661950EABC3845C5897A4D_A6"
+                  IL_0020:  newobj     "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0025:  stloc.0
+                  IL_0026:  ldloca.s   V_0
+                  IL_0028:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_002d:  call       "void System.Console.WriteLine(int)"
+                  IL_0032:  ret
+                }
+                """);
+
+            comp = CreateCompilationWithSpanAndMemoryExtensions([sourceA, sourceB], options: TestOptions.ReleaseExe);
+            comp.VerifyEmitDiagnostics();
+            verifier = CompileAndVerify(comp);
+            // PROTOTYPE: Should we report missing RuntimeHelpers.InitializeArray rather than generating code that allocates?
+            // PROTOTYPE: Or should we fallback to InlineArray if RuntimeHelpers.InitializeArray is missing? (That will change ref safety of the result.)
+            // PROTOTYPE: Did we still create PrivateImplementationDetails in these cases?
+            verifier.VerifyIL("Program.Main",
+                """
+                {
+                  // Code size       38 (0x26)
+                  .maxstack  5
+                  .locals init (System.ReadOnlySpan<int> V_0) //s
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldc.i4.3
+                  IL_0003:  newarr     "int"
+                  IL_0008:  dup
+                  IL_0009:  ldc.i4.0
+                  IL_000a:  ldc.i4.1
+                  IL_000b:  stelem.i4
+                  IL_000c:  dup
+                  IL_000d:  ldc.i4.1
+                  IL_000e:  ldc.i4.2
+                  IL_000f:  stelem.i4
+                  IL_0010:  dup
+                  IL_0011:  ldc.i4.2
+                  IL_0012:  ldc.i4.3
+                  IL_0013:  stelem.i4
+                  IL_0014:  call       "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0019:  ldloca.s   V_0
+                  IL_001b:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0020:  call       "void System.Console.WriteLine(int)"
+                  IL_0025:  ret
+                }
+                """);
+        }
+
         [Fact]
         public void ExpressionTrees()
         {

@@ -135,6 +135,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
                 return ArrayInitializerStyle.Element;
             }
 
+            // PROTOTYPE: What about this caller?
             if (IsTypeAllowedInBlobWrapper(elementType.EnumUnderlyingTypeOrSelf().SpecialType))
             {
                 int initCount = 0;

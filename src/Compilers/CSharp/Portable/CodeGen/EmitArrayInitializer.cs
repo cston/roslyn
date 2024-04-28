@@ -483,6 +483,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             var elementCount = initializers.Length;
             if (elementCount == 0)
             {
+                // PROTOTYPE: Test this case.
                 emitEmptyReadonlySpan(spanType, wrappedExpression, used, inPlaceTarget);
                 return true;
             }
@@ -497,8 +498,14 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             specialElementType = elementType.EnumUnderlyingTypeOrSelf().SpecialType;
             if (!IsTypeAllowedInBlobWrapper(specialElementType))
             {
+                // PROTOTYPE: Test this case.
                 return start is null && length is null
                     && tryEmitAsCachedArrayOfConstants(ac, arrayType, elementType, spanType, used, inPlaceTarget, out avoidInPlace);
+            }
+
+            if (_module.GetInitArrayHelper() is null)
+            {
+                return false;
             }
 
             if (IsPeVerifyCompatEnabled())
