@@ -1735,12 +1735,46 @@ namespace Microsoft.CodeAnalysis.CSharp
             BindingDiagnosticBag diagnostics)
         {
             bool isDisjunction = node.Kind() == SyntaxKind.OrPattern;
+
+            (isDisjunction ? MessageID.IDS_FeatureOrPattern : MessageID.IDS_FeatureAndPattern).CheckFeatureAvailability(diagnostics, node.OperatorToken);
+
+            if (isDisjunction) // PROTOTYPE: This needs to be checked potentially at each "left".
+            {
+                permitDesignations = false; // prevent designators under 'or'
+            }
+
+            var stack = ArrayBuilder<BinaryPatternSyntax>.GetInstance();
+            PatternSyntax syntax = node;
+
+            while (syntax is BinaryPatternSyntax binaryPattern)
+            {
+                stack.Push(binaryPattern);
+                syntax = binaryPattern.Left;
+            }
+
+            BoundPattern result = BindPattern(syntax, inputType, permitDesignations, hasErrors, diagnostics);
+            do
+            {
+                node = stack.Pop();
+                result = BindBinaryPatternRight(node, inputType, result, permitDesignations, hasErrors, diagnostics);
+            } while (stack.Any());
+
+            stack.Free();
+            return result;
+        }
+
+        private BoundPattern BindBinaryPatternRight(
+            BinaryPatternSyntax node,
+            TypeSymbol inputType,
+            BoundPattern left,
+            bool permitDesignations,
+            bool hasErrors,
+            BindingDiagnosticBag diagnostics)
+        {
+            bool isDisjunction = node.Kind() == SyntaxKind.OrPattern;
+
             if (isDisjunction)
             {
-                MessageID.IDS_FeatureOrPattern.CheckFeatureAvailability(diagnostics, node.OperatorToken);
-
-                permitDesignations = false; // prevent designators under 'or'
-                var left = BindPattern(node.Left, inputType, permitDesignations, hasErrors, diagnostics);
                 var right = BindPattern(node.Right, inputType, permitDesignations, hasErrors, diagnostics);
 
                 // Compute the common type. This algorithm is quadratic, but disjunctive patterns are unlikely to be huge
@@ -1822,9 +1856,6 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
             else
             {
-                MessageID.IDS_FeatureAndPattern.CheckFeatureAvailability(diagnostics, node.OperatorToken);
-
-                var left = BindPattern(node.Left, inputType, permitDesignations, hasErrors, diagnostics);
                 var right = BindPattern(node.Right, left.NarrowedType, permitDesignations, hasErrors, diagnostics);
                 return new BoundBinaryPattern(node, disjunction: isDisjunction, left, right, inputType: inputType, narrowedType: right.NarrowedType, hasErrors);
             }

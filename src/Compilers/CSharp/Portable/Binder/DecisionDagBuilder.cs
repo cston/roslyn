@@ -645,10 +645,40 @@ namespace Microsoft.CodeAnalysis.CSharp
             out BoundDagTemp output,
             ArrayBuilder<BoundPatternBinding> bindings)
         {
+            var stack = ArrayBuilder<BoundBinaryPattern>.GetInstance();
+            BoundPattern pattern = bin;
+
+            while (pattern is BoundBinaryPattern binaryPattern)
+            {
+                stack.Push(binaryPattern);
+                pattern = binaryPattern.Left;
+            }
+
+            var tests = MakeTestsAndBindings(input, pattern, out var leftOutput, bindings);
+            do
+            {
+                bin = stack.Pop();
+                tests = MakeTestsAndBindingsForBinaryPatternRight(input, bin, tests, leftOutput, out leftOutput, bindings);
+
+            } while (stack.Any());
+
+            stack.Free();
+            output = leftOutput;
+            return tests;
+        }
+
+        private Tests MakeTestsAndBindingsForBinaryPatternRight(
+            BoundDagTemp input,
+            BoundBinaryPattern bin,
+            Tests leftTests,
+            BoundDagTemp leftOutput,
+            out BoundDagTemp output,
+            ArrayBuilder<BoundPatternBinding> bindings)
+        {
             var builder = ArrayBuilder<Tests>.GetInstance(2);
+            builder.Add(leftTests);
             if (bin.Disjunction)
             {
-                builder.Add(MakeTestsAndBindings(input, bin.Left, bindings));
                 builder.Add(MakeTestsAndBindings(input, bin.Right, bindings));
                 var result = Tests.OrSequence.Create(builder);
                 if (bin.InputType.Equals(bin.NarrowedType))
@@ -666,7 +696,6 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
             else
             {
-                builder.Add(MakeTestsAndBindings(input, bin.Left, out var leftOutput, bindings));
                 builder.Add(MakeTestsAndBindings(leftOutput, bin.Right, out var rightOutput, bindings));
                 output = rightOutput;
                 Debug.Assert(bin.HasErrors || output.Type.Equals(bin.NarrowedType, TypeCompareKind.AllIgnoreOptions));

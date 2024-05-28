@@ -6900,5 +6900,34 @@ class Outer
             }
             """);
         }
+
+        // PROTOTYPE: Remove "int n" parameter if not needed.
+        [WorkItem("https://github.com/dotnet/roslyn/issues/73439")]
+        [Theory]
+        [CombinatorialData]
+        public void NestedBinaryPattern([CombinatorialValues(5, 2000)] int n, bool useOr)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine("""
+                #nullable enable
+                class Program
+                {
+                    static bool F(int i)
+                    {
+                        return i is
+                """);
+            for (int i = 0; i < n; i++)
+            {
+                builder.AppendLine(useOr ? $"          {i * 2} or" : $"          not {i * 2} and");
+            }
+            builder.AppendLine("""
+                        -1;
+                    }
+                }
+                """);
+            string source = builder.ToString();
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics();
+        }
     }
 }
