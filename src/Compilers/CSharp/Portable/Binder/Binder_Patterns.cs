@@ -1734,28 +1734,29 @@ namespace Microsoft.CodeAnalysis.CSharp
             bool hasErrors,
             BindingDiagnosticBag diagnostics)
         {
-            bool isDisjunction = node.Kind() == SyntaxKind.OrPattern;
-
-            (isDisjunction ? MessageID.IDS_FeatureOrPattern : MessageID.IDS_FeatureAndPattern).CheckFeatureAvailability(diagnostics, node.OperatorToken);
-
-            if (isDisjunction) // PROTOTYPE: This needs to be checked potentially at each "left".
-            {
-                permitDesignations = false; // prevent designators under 'or'
-            }
-
-            var stack = ArrayBuilder<BinaryPatternSyntax>.GetInstance();
+            var stack = ArrayBuilder<(BinaryPatternSyntax, bool)>.GetInstance();
             PatternSyntax syntax = node;
 
             while (syntax is BinaryPatternSyntax binaryPattern)
             {
-                stack.Push(binaryPattern);
+                bool isDisjunction = binaryPattern.Kind() == SyntaxKind.OrPattern;
+
+                (isDisjunction ? MessageID.IDS_FeatureOrPattern : MessageID.IDS_FeatureAndPattern).CheckFeatureAvailability(diagnostics, binaryPattern.OperatorToken);
+
+                if (isDisjunction)
+                {
+                    // PROTOTYPE: Test where this makes a difference.
+                    permitDesignations = false; // prevent designators under 'or'
+                }
+
+                stack.Push((binaryPattern, permitDesignations));
                 syntax = binaryPattern.Left;
             }
 
             BoundPattern result = BindPattern(syntax, inputType, permitDesignations, hasErrors, diagnostics);
             do
             {
-                node = stack.Pop();
+                (node, permitDesignations) = stack.Pop();
                 result = BindBinaryPatternRight(node, inputType, result, permitDesignations, hasErrors, diagnostics);
             } while (stack.Any());
 
@@ -1788,6 +1789,9 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 static void collectCandidates(BoundPattern pat, ArrayBuilder<TypeSymbol> candidates)
                 {
+                    // PROTOTYPE: Temporary limit while we're debugging nested binary patterns.
+                    if (candidates.Count > 20) return;
+
                     if (pat is BoundBinaryPattern { Disjunction: true } p)
                     {
                         collectCandidates(p.Left, candidates);

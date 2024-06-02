@@ -111,8 +111,23 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         public override BoundNode VisitBinaryPattern(BoundBinaryPattern node)
         {
-            Visit(node.Left);
-            Visit(node.Right);
+            var stack = ArrayBuilder<BoundBinaryPattern>.GetInstance();
+            BoundPattern pattern = node;
+
+            while (pattern is BoundBinaryPattern binaryPattern)
+            {
+                stack.Push(binaryPattern);
+                pattern = binaryPattern.Left;
+            }
+
+            Visit(pattern);
+
+            do
+            {
+                var binaryPattern = stack.Pop();
+                Visit(binaryPattern.Right);
+            } while (stack.Any());
+
             return null;
         }
 
