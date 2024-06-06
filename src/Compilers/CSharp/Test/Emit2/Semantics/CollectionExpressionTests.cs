@@ -2011,6 +2011,62 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
         }
 
         [Fact]
+        public void BetterConversionFromExpression_PROTOTYPE_01()
+        {
+            string source = """
+                #nullable enable
+                using System;
+                class Program
+                {
+                    static string Concat(params ReadOnlySpan<object?> args) { Console.WriteLine("object"); return null; }
+                    static string Concat(params ReadOnlySpan<string?> args) { Console.WriteLine("string"); return null; }
+                    static void Main()
+                    {
+                        Concat("a", "b", "c");
+                        //Concat(["a", "b", "c"]);
+                    }
+                }
+                """;
+            CompileAndVerify(source, targetFramework: TargetFramework.Net80, verify: Verification.Skipped, expectedOutput: "string");
+        }
+
+        [Fact]
+        public void BetterConversionFromExpression_PROTOTYPE_02()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void F(int i) { Console.WriteLine("int"); }
+                    static void F(byte b) { Console.WriteLine("byte"); }
+                    static void Main()
+                    {
+                        F(2);
+                    }
+                }
+                """;
+            CompileAndVerify(source, targetFramework: TargetFramework.Net80, expectedOutput: "int");
+        }
+
+        [Fact]
+        public void BetterConversionFromExpression_PROTOTYPE_03()
+        {
+            string source = """
+                using System;
+                class Program
+                {
+                    static void F(params int[] args) { Console.WriteLine("int"); }
+                    static void F(params byte[] args) { Console.WriteLine("byte"); }
+                    static void Main()
+                    {
+                        F(1, 2, 3);
+                    }
+                }
+                """;
+            CompileAndVerify(source, targetFramework: TargetFramework.Net80, expectedOutput: "int");
+        }
+
+        [Fact]
         public void BestCommonType_01()
         {
             string source = """
