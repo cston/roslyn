@@ -45,7 +45,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.Semantics
         /// <summary>
         /// Represents the state of "field" identifier for speculative semantic model tests.
         /// </summary>
-        public enum FieldBindingTestState
+        public enum FieldBindingTestState // PROTOTYPE: Remove.
         {
             /// <summary>
             /// The field identifier isn't a backing field or a local.
@@ -70,7 +70,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.Semantics
             BecomesLocal,
         }
 
-        private void VerifyTypeIL(CSharpCompilation compilation, string typeName, string expected, Verification verify = Verification.Passes)
+        private void VerifyTypeIL(CSharpCompilation compilation, string typeName, string expected, Verification? verify = null)
         {
             if (!ExecutionConditionUtil.IsDesktop)
             {
@@ -78,7 +78,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.Semantics
                 expected = expected.Replace("[mscorlib]", "[netstandard]");
             }
 
-            CompileAndVerify(compilation, verify: verify).VerifyTypeIL(typeName, expected);
+            CompileAndVerify(compilation, verify: verify ?? Verification.Passes).VerifyTypeIL(typeName, expected);
         }
 
         [Theory, CombinatorialData]
@@ -105,9 +105,6 @@ public class Derived2 : Base
 
 public class Derived3 : Base
 {
-    // PROTOTYPE(semi-auto-props):
-    // This should produce ERR_AutoPropertyMustOverrideSet ""Auto-implemented properties must override all accessors of the overridden property.""
-    // instead of ERR_AutoPropertyMustHaveGetAccessor, unless https://github.com/dotnet/csharplang/issues/6089 is accepted.
     public override int P1 { set; }
 }
 
@@ -116,8 +113,6 @@ public class Derived4 : Base
     public override int P1 { get => field; set => field = value; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             if (callGetFieldsToEmit)
             {
                 var baseFields = comp.GetTypeByMetadataName("Base").GetFieldsToEmit().ToArray();
@@ -135,7 +130,8 @@ public class Derived4 : Base
                 Assert.Equal("System.Int32 Derived2.<P2>k__BackingField", derived2Fields[1].ToTestDisplayString());
 
                 var derived3Fields = comp.GetTypeByMetadataName("Derived3").GetFieldsToEmit().ToArray();
-                Assert.Equal(0, derived3Fields.Length);
+                Assert.Equal(1, derived3Fields.Length);
+                Assert.Equal("System.Int32 Derived3.<P1>k__BackingField", derived3Fields[0].ToTestDisplayString());
 
                 var derived4Fields = comp.GetTypeByMetadataName("Derived4").GetFieldsToEmit().ToArray();
                 Assert.Equal(1, derived4Fields.Length);
@@ -145,7 +141,7 @@ public class Derived4 : Base
             if (callSemanticModel)
             {
                 var model = comp.GetSemanticModel(comp.SyntaxTrees.Single());
-                var nodes = comp.SyntaxTrees.Single().GetRoot().DescendantNodes().Where(n => n is IdentifierNameSyntax identifier && identifier.Identifier.ContextualKind() == SyntaxKind.FieldKeyword);
+                var nodes = comp.SyntaxTrees.Single().GetRoot().DescendantNodes().Where(n => n is FieldExpressionSyntax);
                 foreach (var node in nodes)
                 {
                     var typeInfo = model.GetTypeInfo(node);
@@ -166,11 +162,13 @@ public class Derived4 : Base
                 // (17,25): error CS8080: Auto-implemented properties must override all accessors of the overridden property.
                 //     public override int P2 { set => _ = field; }
                 Diagnostic(ErrorCode.ERR_AutoPropertyMustOverrideSet, "P2").WithLocation(17, 25),
-                // (25,30): error CS8051: Auto-implemented properties must have get accessors.
+                // (22,25): error CS8080: Auto-implemented properties must override all accessors of the overridden property.
                 //     public override int P1 { set; }
-                Diagnostic(ErrorCode.ERR_AutoPropertyMustHaveGetAccessor, "set").WithLocation(25, 30)
+                Diagnostic(ErrorCode.ERR_AutoPropertyMustOverrideSet, "P1").WithLocation(22, 25),
+                // (22,30): error CS8051: Auto-implemented properties must have get accessors.
+                //     public override int P1 { set; }
+                Diagnostic(ErrorCode.ERR_AutoPropertyMustHaveGetAccessor, "set").WithLocation(22, 30)
                 );
-            Assert.Equal(callGetFieldsToEmit ? 5 : 0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -193,66 +191,37 @@ public interface I
 }
 ", targetFramework: TargetFramework.NetCoreApp); // setting TargetFramework for DefaultImplementationsOfInterfaces to exist.
 
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
-                // (4,28): error CS0525: Interfaces cannot contain instance fields
-                //     public int P1 { get => field; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(4, 28),
-                // (6,28): error CS0525: Interfaces cannot contain instance fields
-                //     public int P2 { get => field; set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(6, 28),
-                // (6,42): error CS0525: Interfaces cannot contain instance fields
-                //     public int P2 { get => field; set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(6, 42),
-                // (8,31): error CS0525: Interfaces cannot contain instance fields
-                //     public int P3 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(8, 31),
-                // (8,45): error CS0525: Interfaces cannot contain instance fields
-                //     public int P3 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(8, 45),
-                // (8,61): error CS0525: Interfaces cannot contain instance fields
-                //     public int P3 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(8, 61),
+                // (4,16): error CS0525: Interfaces cannot contain instance fields
+                //     public int P1 { get => field; }
+                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "P1").WithLocation(4, 16),
+                // (6,16): error CS0525: Interfaces cannot contain instance fields
+                //     public int P2 { get => field; set => field = value; }
+                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "P2").WithLocation(6, 16),
+                // (8,16): error CS0525: Interfaces cannot contain instance fields
+                //     public int P3 { get { _ = field; return field; } set => field = value; }
+                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "P3").WithLocation(8, 16),
                 // (10,16): error CS8053: Instance properties in interfaces cannot have initializers.
                 //     public int P4 { get => field; } = 0;
                 Diagnostic(ErrorCode.ERR_InstancePropertyInitializerInInterface, "P4").WithLocation(10, 16),
-                // (10,28): error CS0525: Interfaces cannot contain instance fields
-                //     public int P4 { get => field; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(10, 28),
                 // (12,16): error CS8053: Instance properties in interfaces cannot have initializers.
                 //     public int P5 { get => field; set => field = value; } = 0;
                 Diagnostic(ErrorCode.ERR_InstancePropertyInitializerInInterface, "P5").WithLocation(12, 16),
-                // (12,28): error CS0525: Interfaces cannot contain instance fields
-                //     public int P5 { get => field; set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(12, 28),
-                // (12,42): error CS0525: Interfaces cannot contain instance fields
-                //     public int P5 { get => field; set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(12, 42),
                 // (14,16): error CS8053: Instance properties in interfaces cannot have initializers.
                 //     public int P6 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InstancePropertyInitializerInInterface, "P6").WithLocation(14, 16),
-                // (14,31): error CS0525: Interfaces cannot contain instance fields
-                //     public int P6 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(14, 31),
-                // (14,45): error CS0525: Interfaces cannot contain instance fields
-                //     public int P6 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(14, 45),
-                // (14,61): error CS0525: Interfaces cannot contain instance fields
-                //     public int P6 { get { _ = field; return field; } set => field = value; } = 0;
-                Diagnostic(ErrorCode.ERR_InterfacesCantContainFields, "field").WithLocation(14, 61)
+                Diagnostic(ErrorCode.ERR_InstancePropertyInitializerInInterface, "P6").WithLocation(14, 16)
                 );
             var @interface = comp.GetTypeByMetadataName("I");
-            Assert.Empty(@interface.GetMembers().OfType<FieldSymbol>());
+            var fields = @interface.GetMembers().OfType<FieldSymbol>().ToArray();
+            Assert.Equal(6, fields.Length);
+            Assert.Equal("System.Int32 I.<P1>k__BackingField", fields[0].ToTestDisplayString());
+            Assert.Equal("System.Int32 I.<P2>k__BackingField", fields[1].ToTestDisplayString());
+            Assert.Equal("System.Int32 I.<P3>k__BackingField", fields[2].ToTestDisplayString());
+            Assert.Equal("System.Int32 I.<P4>k__BackingField", fields[3].ToTestDisplayString());
+            Assert.Equal("System.Int32 I.<P5>k__BackingField", fields[4].ToTestDisplayString());
+            Assert.Equal("System.Int32 I.<P6>k__BackingField", fields[5].ToTestDisplayString());
             var fieldsToEmit = @interface.GetFieldsToEmit().ToArray();
-            Assert.Equal(6, fieldsToEmit.Length);
-            Assert.Equal("System.Int32 I.<P1>k__BackingField", fieldsToEmit[0].ToTestDisplayString());
-            Assert.Equal("System.Int32 I.<P2>k__BackingField", fieldsToEmit[1].ToTestDisplayString());
-            Assert.Equal("System.Int32 I.<P3>k__BackingField", fieldsToEmit[2].ToTestDisplayString());
-            Assert.Equal("System.Int32 I.<P4>k__BackingField", fieldsToEmit[3].ToTestDisplayString());
-            Assert.Equal("System.Int32 I.<P5>k__BackingField", fieldsToEmit[4].ToTestDisplayString());
-            Assert.Equal("System.Int32 I.<P6>k__BackingField", fieldsToEmit[5].ToTestDisplayString());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            AssertEx.Equal(fields, fieldsToEmit);
         }
 
         [Fact]
@@ -265,14 +234,12 @@ public interface I
 }
 ", targetFramework: TargetFramework.NetCoreApp); // setting TargetFramework for DefaultImplementationsOfInterfaces to exist.
 
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics();
             VerifyTypeIL(comp, "I", @"
-.class interface public auto ansi abstract I
+.class interface public auto ansi abstract beforefieldinit I
 {
 	// Fields
-	.field private static initonly int32 '<P>k__BackingField'
+	.field private static int32 '<P>k__BackingField'
 	.custom instance void [System.Runtime]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -295,8 +262,7 @@ public interface I
 ", Verification.FailsPEVerify);
             var @interface = comp.GetTypeByMetadataName("I");
             Assert.Equal("System.Int32 I.<P>k__BackingField", @interface.GetFieldsToEmit().Single().ToTestDisplayString());
-            Assert.Empty(@interface.GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Equal("System.Int32 I.<P>k__BackingField", @interface.GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
         }
 
         [Fact]
@@ -309,8 +275,6 @@ public interface I
 }
 ");
             comp.MakeMemberMissing(SpecialMember.System_Runtime_CompilerServices_RuntimeFeature__DefaultImplementationsOfInterfaces);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (4,27): error CS8701: Target runtime doesn't support default interface implementation.
                 //     public static int P { get => field; }
@@ -318,8 +282,7 @@ public interface I
                 );
             var @interface = comp.GetTypeByMetadataName("I");
             Assert.Equal("System.Int32 I.<P>k__BackingField", @interface.GetFieldsToEmit().Single().ToTestDisplayString());
-            Assert.Empty(@interface.GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Equal("System.Int32 I.<P>k__BackingField", @interface.GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
         }
 
         [Fact]
@@ -330,19 +293,16 @@ public abstract class C
 {
     public abstract int P { get => field; }
 }
-"); // setting TargetFramework for DefaultImplementationsOfInterfaces to exist.
+");
 
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (4,29): error CS0500: 'C.P.get' cannot declare a body because it is marked abstract
                 //     public abstract int P { get => field; }
                 Diagnostic(ErrorCode.ERR_AbstractHasBody, "get").WithArguments("C.P.get").WithLocation(4, 29)
                 );
             var @class = comp.GetTypeByMetadataName("C");
-            Assert.Empty(@class.GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(@class.GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(@class.GetMembers().OfType<FieldSymbol>());
+            Assert.Single(@class.GetFieldsToEmit());
         }
 
         [Fact]
@@ -355,17 +315,14 @@ public class C
 }
 ");
 
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (4,27): error CS0179: 'C.P.get' cannot be extern and declare a body
                 //     public extern int P { get => field; }
                 Diagnostic(ErrorCode.ERR_ExternHasBody, "get").WithArguments("C.P.get").WithLocation(4, 27)
                 );
             var @class = comp.GetTypeByMetadataName("C");
-            Assert.Empty(@class.GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(@class.GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(@class.GetMembers().OfType<FieldSymbol>());
+            Assert.Single(@class.GetFieldsToEmit());
         }
 
         [Fact]
@@ -391,14 +348,10 @@ public class MyAttribute : System.Attribute
     public MyAttribute(string s) { }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
-                // (10,24): error CS9500: Cannot use 'field' keyword inside 'nameof' expressions.
+                // (10,24): error CS8081: Expression does not have a name.
                 //             [My(nameof(field))]
-                Diagnostic(ErrorCode.ERR_FieldKeywordInsideNameOf, "field").WithLocation(10, 24)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+                Diagnostic(ErrorCode.ERR_ExpressionHasNoName, "field").WithLocation(10, 24));
         }
 
         [Fact]
@@ -416,17 +369,13 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (8,20): error CS0029: Cannot implicitly convert type 'string' to 'int'
                 //             return nameof(field);
                 Diagnostic(ErrorCode.ERR_NoImplicitConv, "nameof(field)").WithArguments("string", "int").WithLocation(8, 20),
-                // (8,27): error CS9500: Cannot use 'field' keyword inside 'nameof' expressions.
+                // (8,27): error CS8081: Expression does not have a name.
                 //             return nameof(field);
-                Diagnostic(ErrorCode.ERR_FieldKeywordInsideNameOf, "field").WithLocation(8, 27)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+                Diagnostic(ErrorCode.ERR_ExpressionHasNoName, "field").WithLocation(8, 27));
         }
 
         [Fact]
@@ -446,16 +395,14 @@ public class C
     public int nameof(int x) => 0;
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics();
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Fields
-	.field private initonly int32 '<P>k__BackingField'
+	.field private int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -500,7 +447,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -524,8 +470,6 @@ public struct C
     public int P { get => field; set => field = value; }
 }
 ", options: TestOptions.ReleaseExe.WithSpecificDiagnosticOptions(ReportStructInitializationWarnings));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: @"In C..ctor: 0
 In C..ctor: 0").VerifyIL("C..ctor", @"
 {
@@ -550,8 +494,7 @@ In C..ctor: 0").VerifyIL("C..ctor", @"
     //         System.Console.WriteLine("In C..ctor: " + P);
     Diagnostic(ErrorCode.WRN_UseDefViolationThisSupportedVersion, "P").WithLocation(13, 51)
     );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -577,8 +520,6 @@ public struct C
     public int P { get => field; set => field = value; }
 }
 ", options: TestOptions.ReleaseExe.WithSpecificDiagnosticOptions(ReportStructInitializationWarnings));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: @"In C..ctor before assignment: 0
 In C..ctor after assignment: 5
 In C..ctor before assignment: 0
@@ -616,8 +557,7 @@ In C..ctor after assignment: 5").VerifyIL("C..ctor", @"
     //         System.Console.WriteLine("In C..ctor before assignment: " + P);
     Diagnostic(ErrorCode.WRN_UseDefViolationThisSupportedVersion, "P").WithLocation(13, 69)
     );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact] // PROTOTYPE(semi-auto-props): Add test with semi-colon setter when mixed scenarios are supported.
@@ -642,8 +582,6 @@ public struct C
     public int P { get => field; }
 }
 ", options: TestOptions.ReleaseExe.WithSpecificDiagnosticOptions(ReportStructInitializationWarnings));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: @"In C..ctor before assignment: 0
 In C..ctor after assignment: 5
 5").VerifyIL("C..ctor", @"
@@ -680,8 +618,7 @@ In C..ctor after assignment: 5
     //         System.Console.WriteLine("In C..ctor before assignment: " + P);
     Diagnostic(ErrorCode.WRN_UseDefViolationThisSupportedVersion, "P").WithLocation(12, 69)
     );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -708,8 +645,6 @@ public struct C
     public int P { get => field; set => field = value; }
 }
 ", options: TestOptions.ReleaseExe.WithSpecificDiagnosticOptions(ReportStructInitializationWarnings));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: "5 10 5").VerifyIL("C..ctor", @"
 {
   // Code size       15 (0xf)
@@ -727,8 +662,7 @@ public struct C
     //         P = 5;
     Diagnostic(ErrorCode.WRN_UseDefViolationThisSupportedVersion, "P").WithLocation(16, 9)
     );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -751,8 +685,6 @@ public struct C
     public int P { get => field; }
 }
 ", options: TestOptions.ReleaseExe.WithSpecificDiagnosticOptions(ReportStructInitializationWarnings));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: "5").VerifyIL("C..ctor", @"
     {
       // Code size        8 (0x8)
@@ -763,8 +695,7 @@ public struct C
       IL_0007:  ret
     }
 ").VerifyDiagnostics();
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -794,21 +725,17 @@ public class MyAttribute : System.Attribute
     public MyAttribute(int i) { }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
-                // (10,17): error CS0120: An object reference is required for the non-static field, method, or property 'C.<P>k__BackingField'
+                // (10,17): error CS0182: An attribute argument must be a constant expression, typeof expression or array creation expression of an attribute parameter type
                 //             [My(field)]
-                Diagnostic(ErrorCode.ERR_ObjectRequired, "field").WithArguments("C.<P>k__BackingField").WithLocation(10, 17),
+                Diagnostic(ErrorCode.ERR_BadAttributeArgument, "field").WithLocation(10, 17),
                 // (13,32): error CS1736: Default parameter value for 'i' must be a compile-time constant
                 //             int local2(int i = field) => 0;
                 Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(13, 32),
                 // (15,39): error CS1736: Default parameter value for 'i' must be a compile-time constant
                 //             static int local3(int i = field) => 0;
-                Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(15, 39)
-            );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+                Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(15, 39));
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -841,98 +768,29 @@ public class MyAttribute : System.Attribute
     public MyAttribute(int i) { }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "10").VerifyDiagnostics(
-                // Looks like an incorrect diagnostic. Tracked by https://github.com/dotnet/roslyn/issues/60645
+            comp.VerifyEmitDiagnostics(
                 // (10,23): warning CS0219: The variable 'field' is assigned but its value is never used
                 //             const int field = 5;
-                Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(10, 23)
-                );
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2080
-		// Code size 20 (0x14)
-		.maxstack 8
-		IL_0000: call int32 C::'<get_P>g__local1|1_0'()
-		IL_0005: ldc.i4.5
-		IL_0006: call int32 C::'<get_P>g__local2|1_1'(int32)
-		IL_000b: add
-		IL_000c: ldc.i4.5
-		IL_000d: call int32 C::'<get_P>g__local3|1_2'(int32)
-		IL_0012: add
-		IL_0013: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2078
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	.method assembly hidebysig static 
-		int32 '<get_P>g__local1|1_0' () cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		.custom instance void MyAttribute::.ctor(int32) = (
-			01 00 05 00 00 00 00 00
-		)
-		// Method begins at RVA 0x2095
-		// Code size 2 (0x2)
-		.maxstack 8
-		IL_0000: ldc.i4.0
-		IL_0001: ret
-	} // end of method C::'<get_P>g__local1|1_0'
-	.method assembly hidebysig static 
-		int32 '<get_P>g__local2|1_1' (
-			[opt] int32 i
-		) cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		.param [1] = int32(5)
-		// Method begins at RVA 0x2098
-		// Code size 2 (0x2)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ret
-	} // end of method C::'<get_P>g__local2|1_1'
-	.method assembly hidebysig static 
-		int32 '<get_P>g__local3|1_2' (
-			[opt] int32 i
-		) cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		.param [1] = int32(5)
-		// Method begins at RVA 0x2098
-		// Code size 2 (0x2)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ret
-	} // end of method C::'<get_P>g__local3|1_2'
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+                Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(10, 23),
+                // (13,17): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             [My(field)]
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(13, 17),
+                // (13,17): error CS0182: An attribute argument must be a constant expression, typeof expression or array creation expression of an attribute parameter type
+                //             [My(field)]
+                Diagnostic(ErrorCode.ERR_BadAttributeArgument, "field").WithLocation(13, 17),
+                // (16,32): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             int local2(int i = field) => i;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(16, 32),
+                // (16,32): error CS1736: Default parameter value for 'i' must be a compile-time constant
+                //             int local2(int i = field) => i;
+                Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(16, 32),
+                // (18,39): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             static int local3(int i = field) => i;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(18, 39),
+                // (18,39): error CS1736: Default parameter value for 'i' must be a compile-time constant
+                //             static int local3(int i = field) => i;
+                Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(18, 39));
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -962,8 +820,6 @@ public class MyAttribute : System.Attribute
     public MyAttribute(int i) { }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (10,17): error CS0182: An attribute argument must be a constant expression, typeof expression or array creation expression of an attribute parameter type
                 //             [My(field)]
@@ -975,8 +831,7 @@ public class MyAttribute : System.Attribute
                 //             static int local3(int i = field) => 0;
                 Diagnostic(ErrorCode.ERR_DefaultValueMustBeConstant, "field").WithArguments("i").WithLocation(15, 39)
             );
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -999,74 +854,14 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "5").VerifyDiagnostics();
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Nested Types
-	.class nested private auto ansi sealed beforefieldinit '<>c__DisplayClass1_0'
-		extends [mscorlib]System.ValueType
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		// Fields
-		.field public int32 'field'
-	} // end of class <>c__DisplayClass1_0
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2080
-		// Code size 16 (0x10)
-		.maxstack 2
-		.locals init (
-			[0] valuetype C/'<>c__DisplayClass1_0'
-		)
-		IL_0000: ldloca.s 0
-		IL_0002: ldc.i4.5
-		IL_0003: stfld int32 C/'<>c__DisplayClass1_0'::'field'
-		IL_0008: ldloca.s 0
-		IL_000a: call int32 C::'<get_P>g__local|1_0'(valuetype C/'<>c__DisplayClass1_0'&)
-		IL_000f: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2078
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	.method assembly hidebysig static 
-		int32 '<get_P>g__local|1_0' (
-			valuetype C/'<>c__DisplayClass1_0'& ''
-		) cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		// Method begins at RVA 0x209c
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld int32 C/'<>c__DisplayClass1_0'::'field'
-		IL_0006: ret
-	} // end of method C::'<get_P>g__local|1_0'
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics(
+                // (10,17): warning CS0219: The variable 'field' is assigned but its value is never used
+                //             int field = 5;
+                Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(10, 17),
+                // (13,28): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             int local() => field;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(13, 28));
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Fact]
@@ -1087,79 +882,14 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "5").VerifyDiagnostics();
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Nested Types
-	.class nested private auto ansi sealed beforefieldinit '<>c__DisplayClass1_0'
-		extends [mscorlib]System.Object
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		// Fields
-		.field public int32 'field'
-		// Methods
-		.method public hidebysig specialname rtspecialname 
-			instance void .ctor () cil managed 
-		{
-			// Method begins at RVA 0x2078
-			// Code size 7 (0x7)
-			.maxstack 8
-			IL_0000: ldarg.0
-			IL_0001: call instance void [mscorlib]System.Object::.ctor()
-			IL_0006: ret
-		} // end of method '<>c__DisplayClass1_0'::.ctor
-		.method assembly hidebysig 
-			instance int32 '<get_P>b__0' () cil managed 
-		{
-			// Method begins at RVA 0x209e
-			// Code size 7 (0x7)
-			.maxstack 8
-			IL_0000: ldarg.0
-			IL_0001: ldfld int32 C/'<>c__DisplayClass1_0'::'field'
-			IL_0006: ret
-		} // end of method '<>c__DisplayClass1_0'::'<get_P>b__0'
-	} // end of class <>c__DisplayClass1_0
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2080
-		// Code size 29 (0x1d)
-		.maxstack 8
-		IL_0000: newobj instance void C/'<>c__DisplayClass1_0'::.ctor()
-		IL_0005: dup
-		IL_0006: ldc.i4.5
-		IL_0007: stfld int32 C/'<>c__DisplayClass1_0'::'field'
-		IL_000c: ldftn instance int32 C/'<>c__DisplayClass1_0'::'<get_P>b__0'()
-		IL_0012: newobj instance void class [mscorlib]System.Func`1<int32>::.ctor(object, native int)
-		IL_0017: callvirt instance !0 class [mscorlib]System.Func`1<int32>::Invoke()
-		IL_001c: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2078
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics(
+                // (9,17): warning CS0219: The variable 'field' is assigned but its value is never used
+                //             int field = 5;
+                Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(9, 17),
+                // (10,43): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             System.Func<int> func = () => field;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(10, 43));
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
         }
 
         [Theory, CombinatorialData]
@@ -1185,54 +915,57 @@ public class C
 ");
             var tree = comp.SyntaxTrees[0];
             var root = tree.GetRoot();
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            if (isLocal)
+            switch (isStatic, isLocal)
             {
-                comp.VerifyDiagnostics(
-                    // (12,35): error CS8421: A static local function cannot contain a reference to 'field'.
-                    //             static int local() => field;
-                    Diagnostic(ErrorCode.ERR_StaticLocalFunctionCannotCaptureVariable, "field").WithArguments("field").WithLocation(12, 35)
-                );
-            }
-            else if (!isStatic && !isLocal)
-            {
-                comp.VerifyDiagnostics(
-                    // (12,35): error CS8422: A static local function cannot contain a reference to 'this' or 'base'.
-                    //             static int local() => field;
-                    Diagnostic(ErrorCode.ERR_StaticLocalFunctionCannotCaptureThis, "field").WithLocation(12, 35)
-                );
-            }
-            else
-            {
-                Assert.True(isStatic && !isLocal);
-                comp.VerifyDiagnostics();
+                case (false, false):
+                    comp.VerifyDiagnostics(
+                        // (4,18): warning CS0414: The field 'C.field' is assigned but its value is never used
+                        //     private  int field = 5;
+                        Diagnostic(ErrorCode.WRN_UnreferencedFieldAssg, "field").WithArguments("C.field").WithLocation(4, 18),
+                        // (12,35): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(12, 35),
+                        // (12,35): error CS8422: A static local function cannot contain a reference to 'this' or 'base'.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.ERR_StaticLocalFunctionCannotCaptureThis, "field").WithLocation(12, 35));
+                    break;
+                case (false, true):
+                    comp.VerifyDiagnostics(
+                        // (9,17): warning CS0219: The variable 'field' is assigned but its value is never used
+                        //             int field = 5;
+                        Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(9, 17),
+                        // (12,35): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(12, 35),
+                        // (12,35): error CS8422: A static local function cannot contain a reference to 'this' or 'base'.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.ERR_StaticLocalFunctionCannotCaptureThis, "field").WithLocation(12, 35));
+                    break;
+                case (true, false):
+                    comp.VerifyDiagnostics(
+                        // (4,24): warning CS0414: The field 'C.field' is assigned but its value is never used
+                        //     private static int field = 5;
+                        Diagnostic(ErrorCode.WRN_UnreferencedFieldAssg, "field").WithArguments("C.field").WithLocation(4, 24),
+                        // (12,35): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(12, 35));
+                    break;
+                case (true, true):
+                    comp.VerifyDiagnostics(
+                        // (9,17): warning CS0219: The variable 'field' is assigned but its value is never used
+                        //             int field = 5;
+                        Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(9, 17),
+                        // (12,35): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                        //             static int local() => field;
+                        Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(12, 35));
+                    break;
             }
 
-            var symbolInfo = comp.GetSemanticModel(tree).GetSymbolInfo(root.DescendantNodes().Single(n => n is IdentifierNameSyntax { Parent: ArrowExpressionClauseSyntax }));
-            if (isLocal)
-            {
-                Assert.Equal(SymbolKind.Local, symbolInfo.Symbol.Kind);
-                Assert.Equal("System.Int32 field", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
-            }
-            else
-            {
-                Assert.Equal(SymbolKind.Field, symbolInfo.Symbol.Kind);
-                Assert.Equal("System.Int32 C.field", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
-            }
-
-            if (isLocal)
-            {
-                Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-                Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            }
-            else
-            {
-                Assert.Equal(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>().Single());
-                Assert.Equal(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single());
-            }
-
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            var symbolInfo = comp.GetSemanticModel(tree).GetSymbolInfo(root.DescendantNodes().Single(n => n is FieldExpressionSyntax { Parent: ArrowExpressionClauseSyntax }));
+            Assert.Equal(SymbolKind.Field, symbolInfo.Symbol.Kind);
+            Assert.Equal("System.Int32 C.<P>k__BackingField", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
+            Assert.Contains(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Contains(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
         [Theory, CombinatorialData]
@@ -1257,42 +990,38 @@ public class C
 ");
             var tree = comp.SyntaxTrees[0];
             var root = tree.GetRoot();
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             if (isLocal)
             {
                 comp.VerifyDiagnostics(
-                    // (10,50): error CS8820: A static anonymous function cannot contain a reference to 'field'.
+                    // (9,17): warning CS0219: The variable 'field' is assigned but its value is never used
+                    //             int field = 5;
+                    Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(9, 17),
+                    // (10,50): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
                     //             System.Func<int> func = static () => field;
-                    Diagnostic(ErrorCode.ERR_StaticAnonymousFunctionCannotCaptureVariable, "field").WithArguments("field").WithLocation(10, 50)
-                );
-            }
-            else
-            {
-                comp.VerifyDiagnostics(
+                    Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(10, 50),
                     // (10,50): error CS8821: A static anonymous function cannot contain a reference to 'this' or 'base'.
                     //             System.Func<int> func = static () => field;
-                    Diagnostic(ErrorCode.ERR_StaticAnonymousFunctionCannotCaptureThis, "field").WithLocation(10, 50)
-                );
-            }
-
-            var symbolInfo = comp.GetSemanticModel(tree).GetSymbolInfo(root.DescendantNodes().Single(n => n is IdentifierNameSyntax { Parent: ParenthesizedLambdaExpressionSyntax }));
-            if (isLocal)
-            {
-                Assert.Equal("System.Int32 field", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
-                Assert.Equal(SymbolKind.Local, symbolInfo.Symbol.Kind);
-                Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-                Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
+                    Diagnostic(ErrorCode.ERR_StaticAnonymousFunctionCannotCaptureThis, "field").WithLocation(10, 50));
             }
             else
             {
-                Assert.Equal("System.Int32 C.field", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
-                Assert.Equal(SymbolKind.Field, symbolInfo.Symbol.Kind);
-                Assert.Equal(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>().Single());
-                Assert.Equal(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single());
+                comp.VerifyDiagnostics(
+                    // (4,17): warning CS0414: The field 'C.field' is assigned but its value is never used
+                    //     private int field = 5;
+                    Diagnostic(ErrorCode.WRN_UnreferencedFieldAssg, "field").WithArguments("C.field").WithLocation(4, 17),
+                    // (10,50): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                    //             System.Func<int> func = static () => field;
+                    Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(10, 50),
+                    // (10,50): error CS8821: A static anonymous function cannot contain a reference to 'this' or 'base'.
+                    //             System.Func<int> func = static () => field;
+                    Diagnostic(ErrorCode.ERR_StaticAnonymousFunctionCannotCaptureThis, "field").WithLocation(10, 50));
             }
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            var symbolInfo = comp.GetSemanticModel(tree).GetSymbolInfo(root.DescendantNodes().Single(n => n is FieldExpressionSyntax { Parent: ParenthesizedLambdaExpressionSyntax }));
+            Assert.Equal("System.Int32 C.<P>k__BackingField", symbolInfo.Symbol.GetSymbol().ToTestDisplayString());
+            Assert.Equal(SymbolKind.Field, symbolInfo.Symbol.Kind);
+            Assert.Contains(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Contains(symbolInfo.Symbol.GetSymbol(), comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
         [Fact]
@@ -1316,62 +1045,15 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "5").VerifyDiagnostics();
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private int32 'field'
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2080
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance int32 C::'<get_P>g__local|2_0'()
-		IL_0006: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2088
-		// Code size 14 (0xe)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldc.i4.5
-		IL_0002: stfld int32 C::'field'
-		IL_0007: ldarg.0
-		IL_0008: call instance void [mscorlib]System.Object::.ctor()
-		IL_000d: ret
-	} // end of method C::.ctor
-	.method private hidebysig 
-		instance int32 '<get_P>g__local|2_0' () cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		// Method begins at RVA 0x2097
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld int32 C::'field'
-		IL_0006: ret
-	} // end of method C::'<get_P>g__local|2_0'
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            var field = comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>().Single();
-            Assert.Equal("System.Int32 C.field", field.ToTestDisplayString());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics(
+                // (6,17): warning CS0414: The field 'C.field' is assigned but its value is never used
+                //     private int field = 5;
+                Diagnostic(ErrorCode.WRN_UnreferencedFieldAssg, "field").WithArguments("C.field").WithLocation(6, 17),
+                // (14,28): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             int local() => field;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(14, 28));
+            var fields = comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>();
+            AssertEx.Equal(new[] { "System.Int32 C.field", "System.Int32 C.<P>k__BackingField" }, fields.ToTestDisplayStrings());
         }
 
         [Fact]
@@ -1391,15 +1073,13 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics();
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Fields
-	.field private initonly int32 '<P>k__BackingField'
+	.field private int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -1412,7 +1092,7 @@ public class C
 		.maxstack 8
 		IL_0000: ldarg.0
 		IL_0001: ldfld int32 C::'<P>k__BackingField'
-		IL_0006: call int32 C::'<get_P>g__nameof|1_0'(int32)
+		IL_0006: call int32 C::'<get_P>g__nameof|2_0'(int32)
 		IL_000b: ret
 	} // end of method C::get_P
 	.method public hidebysig specialname rtspecialname 
@@ -1426,7 +1106,7 @@ public class C
 		IL_0006: ret
 	} // end of method C::.ctor
 	.method assembly hidebysig static 
-		int32 '<get_P>g__nameof|1_0' (
+		int32 '<get_P>g__nameof|2_0' (
 			int32 x
 		) cil managed 
 	{
@@ -1438,7 +1118,7 @@ public class C
 		.maxstack 8
 		IL_0000: ldc.i4.0
 		IL_0001: ret
-	} // end of method C::'<get_P>g__nameof|1_0'
+	} // end of method C::'<get_P>g__nameof|2_0'
 	// Properties
 	.property instance int32 P()
 	{
@@ -1446,7 +1126,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -1468,64 +1147,15 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "5").VerifyDiagnostics();
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private int32 'field'
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2080
-		// Code size 18 (0x12)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldftn instance int32 C::'<get_P>b__2_0'()
-		IL_0007: newobj instance void class [mscorlib]System.Func`1<int32>::.ctor(object, native int)
-		IL_000c: callvirt instance !0 class [mscorlib]System.Func`1<int32>::Invoke()
-		IL_0011: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2093
-		// Code size 14 (0xe)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldc.i4.5
-		IL_0002: stfld int32 C::'field'
-		IL_0007: ldarg.0
-		IL_0008: call instance void [mscorlib]System.Object::.ctor()
-		IL_000d: ret
-	} // end of method C::.ctor
-	.method private hidebysig 
-		instance int32 '<get_P>b__2_0' () cil managed 
-	{
-		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-			01 00 00 00
-		)
-		// Method begins at RVA 0x20a2
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld int32 C::'field'
-		IL_0006: ret
-	} // end of method C::'<get_P>b__2_0'
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            var field = comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>().Single();
-            Assert.Equal("System.Int32 C.field", field.ToTestDisplayString());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics(
+                // (5,17): warning CS0414: The field 'C.field' is assigned but its value is never used
+                //     private int field = 5;
+                Diagnostic(ErrorCode.WRN_UnreferencedFieldAssg, "field").WithArguments("C.field").WithLocation(5, 17),
+                // (11,43): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             System.Func<int> func = () => field;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(11, 43));
+            var fields = comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>();
+            AssertEx.Equal(new[] { "System.Int32 C.field", "System.Int32 C.<P>k__BackingField" }, fields.ToTestDisplayStrings());
         }
 
         [Theory]
@@ -1535,7 +1165,7 @@ public class C
         public void TestNameOfField_FieldIsMember(string member)
         {
             var comp = CreateCompilation($@"
-System.Console.WriteLine(new C().P);
+#pragma warning disable 169
 
 public class C
 {{
@@ -1552,10 +1182,13 @@ public class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            CompileAndVerify(comp, expectedOutput: "field").VerifyDiagnostics();
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            comp.VerifyDiagnostics(
+                // (14,27): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //             return nameof(field);
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(14, 27),
+                // (14,27): error CS8081: Expression does not have a name.
+                //             return nameof(field);
+                Diagnostic(ErrorCode.ERR_ExpressionHasNoName, "field").WithLocation(14, 27));
         }
 
         [Fact]
@@ -1577,17 +1210,15 @@ public class C
     }
 }
 ", options: TestOptions.DebugExe);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             CompileAndVerify(comp, expectedOutput: "5").VerifyDiagnostics();
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Fields
-	.field private initonly int32 '<P>k__BackingField'
+	.field private int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -1641,7 +1272,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -1658,8 +1288,6 @@ public class C
     public int P { }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
@@ -1670,7 +1298,6 @@ public class C
                 //     public int P { }
                 Diagnostic(ErrorCode.ERR_PropertyWithNoAccessors, "P").WithArguments("C.P").WithLocation(9, 16)
             );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -1697,8 +1324,6 @@ public class C
     }}
 }}
 ", options: TestOptions.DebugExe);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             string expectedCtorIL;
             if (callsSynthesizedSetter)
             {
@@ -1746,7 +1371,6 @@ public class C
   IL_0006:  ret
 }
 ").VerifyIL("C..ctor", expectedCtorIL);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -1797,8 +1421,6 @@ public {type} C
 }
 ";
             }
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp).VerifyDiagnostics().VerifyIL("C.P.set", @"
 {
   // Code size       10 (0xa)
@@ -1811,7 +1433,6 @@ public {type} C
   IL_0009:  ret
 }
 ").VerifyIL("C..ctor", ctorExpectedIL);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -1835,8 +1456,6 @@ public class C
     }}
 }}
 ", options: TestOptions.DebugExe);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: "10").VerifyDiagnostics().VerifyIL("C.P.get", @"
 {
   // Code size        7 (0x7)
@@ -1860,7 +1479,6 @@ public class C
   IL_0010:  ret
 }
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory(Skip = "PROTOTYPE(semi-auto-props): Not supported yet.")]
@@ -1885,12 +1503,9 @@ public class C
     }}
 }}
 ", options: TestOptions.DebugExe);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics().VerifyIL("C.P.get", @"
 ").VerifyIL("C..ctor", @"
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -1914,8 +1529,6 @@ public class C
     }}
 }}
 ", options: TestOptions.DebugExe);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             CompileAndVerify(comp, expectedOutput: "0").VerifyDiagnostics().VerifyIL("C.P.get", @"
 {
   // Code size        2 (0x2)
@@ -1947,61 +1560,6 @@ public class C
   IL_0010:  ret
 }
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        // PROTOTYPE(semi-auto-props): All success scenarios should be executed, expected runtime behavior should be observed.
-        // This is waiting until we support assigning to readonly properties in constructor.
-        [Fact]
-        public void TestExpressionBodiedProperty()
-        {
-            var comp = CreateCompilation(@"
-public class C
-{
-    public int P => field;
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private initonly int32 '<P>k__BackingField'
-	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-		01 00 00 00
-	)
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2067
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld int32 C::'<P>k__BackingField'
-		IL_0006: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x206f
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact(Skip = "PROTOTYPE(semi-auto-props): Mixing semicolon-only with field not yet working.")]
@@ -2013,10 +1571,8 @@ public class C
     public string P { get; set => field = value; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             // PROTOTYPE(semi-auto-props): Should be empty or non-empty? Current behavior is unknown since mixed scenarios not yet supported.
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
@@ -2071,7 +1627,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact(Skip = "PROTOTYPE(semi-auto-props): Produces error CS8050: Only auto-implemented properties can have initializers.")]
@@ -2083,9 +1638,7 @@ public class C
     public string P { get => field; set => field = value; } = ""Hello"";
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
@@ -2141,59 +1694,6 @@ public class C
 } // end of class C
 ");
             comp.VerifyDiagnostics();
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void FieldKeywordInReadOnlyProperty()
-        {
-            var comp = CreateCompilation(@"
-public class C
-{
-    public string P { get => field; }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private initonly string '<P>k__BackingField'
-	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-		01 00 00 00
-	)
-	// Methods
-	.method public hidebysig specialname 
-		instance string get_P () cil managed 
-	{
-		// Method begins at RVA 0x2067
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld string C::'<P>k__BackingField'
-		IL_0006: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x206f
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	// Properties
-	.property instance string P()
-	{
-		.get instance string C::get_P()
-	}
-} // end of class C
-");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact(Skip = "PROTOTYPE(semi-auto-props): Mixed scenarios are not yet supported.")]
@@ -2205,14 +1705,11 @@ public class C
     public string P { get; set => @field = value; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (4,35): error CS0103: The name 'field' does not exist in the current context
                 //     public string P { get; set => @field = value; }
                 Diagnostic(ErrorCode.ERR_NameNotInContext, "@field").WithArguments("field").WithLocation(4, 35));
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2224,17 +1721,16 @@ public class C
     public int P { get { int field = field; return field; } }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
-                // (4,38): error CS0165: Use of unassigned local variable 'field'
+                // (4,38): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
                 //     public int P { get { int field = field; return field; } }
-                Diagnostic(ErrorCode.ERR_UseDefViolation, "field").WithArguments("field").WithLocation(4, 38)
-            );
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(4, 38),
+                // (4,52): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //     public int P { get { int field = field; return field; } }
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(4, 52));
 
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+            Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
         }
 
         [Fact]
@@ -2260,63 +1756,15 @@ public class C
     public bool GetBoolValue() => true;
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics();
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private initonly int32 '<P>k__BackingField'
-	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-		01 00 00 00
-	)
-	// Methods
-	.method public hidebysig specialname 
-		instance int32 get_P () cil managed 
-	{
-		// Method begins at RVA 0x2067
-		// Code size 18 (0x12)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance bool C::GetBoolValue()
-		IL_0006: brfalse.s IL_000b
-		IL_0008: ldc.i4.s 10
-		IL_000a: ret
-		IL_000b: ldarg.0
-		IL_000c: ldfld int32 C::'<P>k__BackingField'
-		IL_0011: ret
-	} // end of method C::get_P
-	.method public hidebysig 
-		instance bool GetBoolValue () cil managed 
-	{
-		// Method begins at RVA 0x207a
-		// Code size 2 (0x2)
-		.maxstack 8
-		IL_0000: ldc.i4.1
-		IL_0001: ret
-	} // end of method C::GetBoolValue
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x207d
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	// Properties
-	.property instance int32 P()
-	{
-		.get instance int32 C::get_P()
-	}
-} // end of class C
-");
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            comp.VerifyDiagnostics(
+                // (10,21): warning CS0219: The variable 'field' is assigned but its value is never used
+                //                 int field = 10;
+                Diagnostic(ErrorCode.WRN_UnreferencedVarAssg, "field").WithArguments("field").WithLocation(10, 21),
+                // (11,24): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //                 return field;
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(11, 24));
             Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2328,14 +1776,11 @@ public class C
     public string P { get => @field; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (4,30): error CS0103: The name 'field' does not exist in the current context
                 //     public string P { get => @field; }
                 Diagnostic(ErrorCode.ERR_NameNotInContext, "@field").WithArguments("field").WithLocation(4, 30));
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2351,75 +1796,11 @@ public class C : B
     public string P { get => field; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
-            VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
-	extends B
-{
-	// Methods
-	.method public hidebysig specialname 
-		instance string get_P () cil managed 
-	{
-		// Method begins at RVA 0x206f
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld string B::'field'
-		IL_0006: ret
-	} // end of method C::get_P
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2077
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void B::.ctor()
-		IL_0006: ret
-	} // end of method C::.ctor
-	// Properties
-	.property instance string P()
-	{
-		.get instance string C::get_P()
-	}
-} // end of class C
-");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_ERR_AutoSetterCantBeReadOnly()
-        {
-            var comp = CreateCompilation(@"
-public struct S
-{
-    public int P1 { get; readonly set; } // ERR_AutoSetterCantBeReadOnly
-    public int P2 { get { return 0; } readonly set { } } // No ERR_AutoSetterCantBeReadOnly
-    public int P3 { get => field; readonly set => field = value; } // No ERR_AutoSetterCantBeReadOnly, but ERR_AssgReadonlyLocal
-    public int P4 { get; readonly set => field = value; } // No ERR_AutoSetterCantBeReadOnly, but ERR_AssgReadonlyLocal
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Equal("System.Int32 S.<P1>k__BackingField", comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
-                // (4,35): error CS8658: Auto-implemented 'set' accessor 'S.P1.set' cannot be marked 'readonly'.
-                //     public int P1 { get; readonly set; } // ERR_AutoSetterCantBeReadOnly
-                Diagnostic(ErrorCode.ERR_AutoSetterCantBeReadOnly, "set").WithArguments("S.P1.set").WithLocation(4, 35),
-                // (6,51): error CS1604: Cannot assign to 'field' because it is read-only
-                //     public int P3 { get => field; readonly set => field = value; } // No ERR_AutoSetterCantBeReadOnly, but ERR_AssgReadonlyLocal
-                Diagnostic(ErrorCode.ERR_AssgReadonlyLocal, "field").WithArguments("field").WithLocation(6, 51),
-                // (7,42): error CS1604: Cannot assign to 'field' because it is read-only
-                //     public int P4 { get; readonly set => field = value; } // No ERR_AutoSetterCantBeReadOnly, but ERR_AssgReadonlyLocal
-                Diagnostic(ErrorCode.ERR_AssgReadonlyLocal, "field").WithArguments("field").WithLocation(7, 42),
-                // PROTOTYPE(semi-auto-props): The following diagnostic shouldn't exist. It should go away when mixed scenarios are supported.
-                // (7,21): error CS0501: 'S.P4.get' must declare a body because it is not marked abstract, extern, or partial
-                //     public int P4 { get; readonly set => field = value; } // No ERR_AutoSetterCantBeReadOnly, but ERR_AssgReadonlyLocal
-                Diagnostic(ErrorCode.ERR_ConcreteMissingBody, "get").WithArguments("S.P4.get").WithLocation(7, 21)
-            );
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
+                // (8,30): warning CS9258: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. To avoid generating a synthesized backing field, and to refer to the existing member, use 'this.field' or '@field' instead.
+                //     public string P { get => field; }
+                Diagnostic(ErrorCode.WRN_FieldIsAmbiguous, "field").WithArguments("preview").WithLocation(8, 30));
         }
 
         [Fact]
@@ -2436,8 +1817,6 @@ public class C2
     public int P2 { get => this.field; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C2").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (8,30): error CS0117: 'C' does not contain a definition for 'field'
@@ -2447,7 +1826,6 @@ public class C2
                 //     public int P2 { get => this.field; }
                 Diagnostic(ErrorCode.ERR_NoSuchMemberOrExtension, "field").WithArguments("C2", "field").WithLocation(9, 33)
             );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2462,8 +1840,6 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (6,9): error CS0501: 'C.this[int].get' must declare a body because it is not marked abstract, extern, or partial
                 //         get; set;
@@ -2475,9 +1851,7 @@ public class C
 
             var property = comp.GetTypeByMetadataName("C").GetMembers().OfType<SourcePropertySymbolBase>().Single();
             Assert.Null(property.BackingField);
-            Assert.Null(property.FieldKeywordBackingField);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2493,8 +1867,6 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (6,16): error CS0103: The name 'field' does not exist in the current context
                 //         get => field;
@@ -2506,9 +1878,7 @@ public class C
 
             var property = comp.GetTypeByMetadataName("C").GetMembers().OfType<SourcePropertySymbolBase>().Single();
             Assert.Null(property.BackingField);
-            Assert.Null(property.FieldKeywordBackingField);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2526,8 +1896,6 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             VerifyTypeIL(comp, "C", @"
 .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
@@ -2584,7 +1952,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2600,8 +1967,6 @@ public class C
     }
 }
 ", options: TestOptions.ReleaseDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             VerifyTypeIL(comp, "C", @"
 
 .class public auto ansi beforefieldinit C
@@ -2653,7 +2018,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         // PROTOTYPE(semi-auto-props): Similar test for when we have an explicit field named `field`, and also for ignored (extra) accessors.
@@ -2668,9 +2032,7 @@ public class C
     public int P1 {{ {accessor} }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             var tree = comp.SyntaxTrees[0];
             var model = comp.GetSemanticModel(tree);
@@ -2680,7 +2042,6 @@ public class C
             Assert.Empty(info.CandidateSymbols);
             Assert.False(info.IsEmpty);
             Assert.Equal("<P1>k__BackingField", info.Symbol.Name);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -2694,9 +2055,7 @@ public class C
     public int P1 {{ {accessor} }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             var tree = comp.SyntaxTrees[0];
             var model = comp.GetSemanticModel(tree);
@@ -2712,7 +2071,6 @@ public class C
                 Assert.Equal("<P1>k__BackingField", info.Symbol.Name);
             }
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -2728,9 +2086,7 @@ public class C
     public int P1 {{ {accessor} }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             var tree = comp.SyntaxTrees[0];
             var model = comp.GetSemanticModel(tree);
@@ -2745,7 +2101,6 @@ public class C
                 Assert.False(info.IsEmpty);
                 Assert.Equal("<P1>k__BackingField", info.Symbol.Name);
             }
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -2765,9 +2120,7 @@ public class C
     public int P1 {{ {accessor} }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             var tree = comp.SyntaxTrees[0];
             var model = comp.GetSemanticModel(tree);
@@ -2778,7 +2131,6 @@ public class C
             Assert.Empty(info.CandidateSymbols);
             Assert.False(info.IsEmpty);
             Assert.Equal("<P1>k__BackingField", info.Symbol.Name);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2790,16 +2142,13 @@ public class C
     public string P { set => field = value; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             for (int i = 0; i < 3; i++)
             {
                 var fields = ((SourceMemberContainerTypeSymbol)comp.GetTypeByMetadataName("C")!).GetFieldsToEmit().ToArray();
                 Assert.Equal(1, fields.Length);
                 Assert.Equal("<P>k__BackingField", fields[0].Name);
             }
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2811,16 +2160,13 @@ public class C
     public string P => field;
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             for (int i = 0; i < 3; i++)
             {
                 var fields = ((SourceMemberContainerTypeSymbol)comp.GetTypeByMetadataName("C")!).GetFieldsToEmit().ToArray();
                 Assert.Equal(1, fields.Length);
                 Assert.Equal("<P>k__BackingField", fields[0].Name);
             }
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -2832,51 +2178,16 @@ public class C
     public string P { get => field; } = string.Empty;
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             for (int i = 0; i < 3; i++)
             {
                 var fields = ((SourceMemberContainerTypeSymbol)comp.GetTypeByMetadataName("C")!).GetFieldsToEmit().ToArray();
                 Assert.Equal(1, fields.Length);
                 Assert.Equal("<P>k__BackingField", fields[0].Name);
             }
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
-        [Fact]
-        public void AssignReadOnlyOnlyPropertyOutsideConstructor_FieldAssignedFirst()
-        {
-            var comp = CreateCompilation(@"
-class Test
-{
-    int X
-    {
-        get
-        {
-            field = 3;
-            X = 3;
-            return 0;
-        }
-    }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("Test").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics(
-                // PROTOTYPE(semi-auto-props): From review,
-                // This error doesn't make sense to me. I understand that the spec requires this field to be read-only, but I don't think this restriction is justified.
-                // (8,13): error CS0191: A readonly field cannot be assigned to (except in a constructor or init-only setter of the type in which the field is defined or a variable initializer)
-                //             field = 3;
-                Diagnostic(ErrorCode.ERR_AssgReadonly, "field").WithLocation(8, 13),
-                // (9,13): error CS0200: Property or indexer 'Test.X' cannot be assigned to -- it is read only
-                //             X = 3;
-                Diagnostic(ErrorCode.ERR_AssgReadonlyProp, "X").WithArguments("Test.X").WithLocation(9, 13)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
+        // REVIEWED: Tests assignment to X as well as field.
         [Fact]
         public void AssignReadOnlyOnlyPropertyOutsideConstructor_FieldAssignedAfterProperty()
         {
@@ -2894,119 +2205,11 @@ class Test
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("Test").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("Test").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (8,13): error CS0200: Property or indexer 'Test.X' cannot be assigned to -- it is read only
                 //             X = 3;
-                Diagnostic(ErrorCode.ERR_AssgReadonlyProp, "X").WithArguments("Test.X").WithLocation(8, 13),
-                // PROTOTYPE(semi-auto-props):
-                // Should the generated field not be readonly?
-                // (9,13): error CS0191: A readonly field cannot be assigned to (except in a constructor or init-only setter of the type in which the field is defined or a variable initializer)
-                //             field = 3;
-                Diagnostic(ErrorCode.ERR_AssgReadonly, "field").WithLocation(9, 13)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void AssignReadOnlyOnlyPropertyOutsideConstructor_FieldNotAssigned()
-        {
-            var comp = CreateCompilation(@"
-class Test
-{
-    int X
-    {
-        get
-        {
-            X = 3;
-            return 0;
-        }
-    }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("Test").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics(
-                // (8,13): error CS0200: Property or indexer 'Test.X' cannot be assigned to -- it is read only
-                //             X = 3;
-                Diagnostic(ErrorCode.ERR_AssgReadonlyProp, "X").WithArguments("Test.X").WithLocation(8, 13)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void AssignReadOnlyOnlyPropertyInConstructor()
-        {
-            var comp = CreateCompilation(@"
-using System;
-
-_ = new Test();
-
-class Test
-{
-    public Test()
-    {
-        X = 3;
-        Console.WriteLine(X);
-    }
-
-    int X
-    {
-        get { return field; }
-    }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("Test").GetMembers().OfType<FieldSymbol>());
-            CompileAndVerify(comp, expectedOutput: "3").VerifyDiagnostics();
-            VerifyTypeIL(comp, "Test", @"
-.class private auto ansi beforefieldinit Test
-	extends [mscorlib]System.Object
-{
-	// Fields
-	.field private initonly int32 '<X>k__BackingField'
-	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
-		01 00 00 00
-	)
-	// Methods
-	.method public hidebysig specialname rtspecialname 
-		instance void .ctor () cil managed 
-	{
-		// Method begins at RVA 0x2077
-		// Code size 25 (0x19)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: call instance void [mscorlib]System.Object::.ctor()
-		IL_0006: ldarg.0
-		IL_0007: ldc.i4.3
-		IL_0008: stfld int32 Test::'<X>k__BackingField'
-		IL_000d: ldarg.0
-		IL_000e: call instance int32 Test::get_X()
-		IL_0013: call void [mscorlib]System.Console::WriteLine(int32)
-		IL_0018: ret
-	} // end of method Test::.ctor
-	.method private hidebysig specialname 
-		instance int32 get_X () cil managed 
-	{
-		// Method begins at RVA 0x2091
-		// Code size 7 (0x7)
-		.maxstack 8
-		IL_0000: ldarg.0
-		IL_0001: ldfld int32 Test::'<X>k__BackingField'
-		IL_0006: ret
-	} // end of method Test::get_X
-	// Properties
-	.property instance int32 X()
-	{
-		.get instance int32 Test::get_X()
-	}
-} // end of class Test
-");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
+                Diagnostic(ErrorCode.ERR_AssgReadonlyProp, "X").WithArguments("Test.X").WithLocation(8, 13));
         }
 
         [Fact]
@@ -3019,15 +2222,11 @@ class C
     public int P2 { set => field = value; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (4,21): error CS8051: Auto-implemented properties must have get accessors.
                 //     public int P1 { set; }
                 Diagnostic(ErrorCode.ERR_AutoPropertyMustHaveGetAccessor, "set").WithLocation(4, 21)
             );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3048,15 +2247,12 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (10,40): error CS8821: A static anonymous function cannot contain a reference to 'this' or 'base'.
                 //             Func<int> f = static () => field;
                 Diagnostic(ErrorCode.ERR_StaticAnonymousFunctionCannotCaptureThis, "field").WithLocation(10, 40)
             );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3076,17 +2272,15 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // (10,39): error CS8422: A static local function cannot contain a reference to 'this' or 'base'.
                 //             static int localFunc() => field;
                 Diagnostic(ErrorCode.ERR_StaticLocalFunctionCannotCaptureThis, "field").WithLocation(10, 39)
             );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
+        // REVIEWED: Isn't there an existing test where field is only used in local function? Change existing test to execute code.
         [Fact]
         public void InLocalFunction()
         {
@@ -3103,16 +2297,14 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
+    .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Fields
-	.field private initonly int32 '<P>k__BackingField'
+	.field private int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -3124,7 +2316,7 @@ public class C
 		// Code size 7 (0x7)
 		.maxstack 8
 		IL_0000: ldarg.0
-		IL_0001: call instance int32 C::'<get_P>g__localFunc|1_0'()
+		IL_0001: call instance int32 C::'<get_P>g__localFunc|2_0'()
 		IL_0006: ret
 	} // end of method C::get_P
 	.method public hidebysig specialname rtspecialname 
@@ -3138,7 +2330,7 @@ public class C
 		IL_0006: ret
 	} // end of method C::.ctor
 	.method private hidebysig 
-		instance int32 '<get_P>g__localFunc|1_0' () cil managed 
+		instance int32 '<get_P>g__localFunc|2_0' () cil managed 
 	{
 		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 			01 00 00 00
@@ -3149,7 +2341,7 @@ public class C
 		IL_0000: ldarg.0
 		IL_0001: ldfld int32 C::'<P>k__BackingField'
 		IL_0006: ret
-	} // end of method C::'<get_P>g__localFunc|1_0'
+	} // end of method C::'<get_P>g__localFunc|2_0'
 	// Properties
 	.property instance int32 P()
 	{
@@ -3157,9 +2349,9 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
+        // REVIEWED: Isn't there an existing test where field is only used in static lambda? Change existing test to execute code.
         [Fact]
         public void InStaticLambda_PropertyIsStatic()
         {
@@ -3178,12 +2370,10 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
+    .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Nested Types
@@ -3195,7 +2385,7 @@ public class C
 		)
 		// Fields
 		.field public static initonly class C/'<>c' '<>9'
-		.field public static class [mscorlib]System.Func`1<int32> '<>9__1_0'
+		.field public static class [mscorlib]System.Func`1<int32> '<>9__2_0'
 		// Methods
 		.method private hidebysig specialname rtspecialname static 
 			void .cctor () cil managed 
@@ -3218,17 +2408,17 @@ public class C
 			IL_0006: ret
 		} // end of method '<>c'::.ctor
 		.method assembly hidebysig 
-			instance int32 '<get_P>b__1_0' () cil managed 
+			instance int32 '<get_P>b__2_0' () cil managed 
 		{
 			// Method begins at RVA 0x20a7
 			// Code size 6 (0x6)
 			.maxstack 8
 			IL_0000: ldsfld int32 C::'<P>k__BackingField'
 			IL_0005: ret
-		} // end of method '<>c'::'<get_P>b__1_0'
+		} // end of method '<>c'::'<get_P>b__2_0'
 	} // end of class <>c
 	// Fields
-	.field private static initonly int32 '<P>k__BackingField'
+	.field private static int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -3239,15 +2429,15 @@ public class C
 		// Method begins at RVA 0x2067
 		// Code size 43 (0x2b)
 		.maxstack 8
-		IL_0000: ldsfld class [mscorlib]System.Func`1<int32> C/'<>c'::'<>9__1_0'
+		IL_0000: ldsfld class [mscorlib]System.Func`1<int32> C/'<>c'::'<>9__2_0'
 		IL_0005: dup
 		IL_0006: brtrue.s IL_001f
 		IL_0008: pop
 		IL_0009: ldsfld class C/'<>c' C/'<>c'::'<>9'
-		IL_000e: ldftn instance int32 C/'<>c'::'<get_P>b__1_0'()
+		IL_000e: ldftn instance int32 C/'<>c'::'<get_P>b__2_0'()
 		IL_0014: newobj instance void class [mscorlib]System.Func`1<int32>::.ctor(object, native int)
 		IL_0019: dup
-		IL_001a: stsfld class [mscorlib]System.Func`1<int32> C/'<>c'::'<>9__1_0'
+		IL_001a: stsfld class [mscorlib]System.Func`1<int32> C/'<>c'::'<>9__2_0'
 		IL_001f: callvirt instance !0 class [mscorlib]System.Func`1<int32>::Invoke()
 		IL_0024: call void [mscorlib]System.Console::WriteLine(int32)
 		IL_0029: ldc.i4.0
@@ -3270,9 +2460,9 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
+        // REVIEWED: Isn't there an existing test where field is only used in lambda? Change existing test to execute code.
         [Fact]
         public void InLambda()
         {
@@ -3291,16 +2481,14 @@ public class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
             VerifyTypeIL(comp, "C", @"
-.class public auto ansi beforefieldinit C
+    .class public auto ansi beforefieldinit C
 	extends [mscorlib]System.Object
 {
 	// Fields
-	.field private initonly int32 '<P>k__BackingField'
+	.field private int32 '<P>k__BackingField'
 	.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 		01 00 00 00
 	)
@@ -3312,7 +2500,7 @@ public class C
 		// Code size 24 (0x18)
 		.maxstack 8
 		IL_0000: ldarg.0
-		IL_0001: ldftn instance int32 C::'<get_P>b__1_0'()
+		IL_0001: ldftn instance int32 C::'<get_P>b__2_0'()
 		IL_0007: newobj instance void class [mscorlib]System.Func`1<int32>::.ctor(object, native int)
 		IL_000c: callvirt instance !0 class [mscorlib]System.Func`1<int32>::Invoke()
 		IL_0011: call void [mscorlib]System.Console::WriteLine(int32)
@@ -3330,7 +2518,7 @@ public class C
 		IL_0006: ret
 	} // end of method C::.ctor
 	.method private hidebysig 
-		instance int32 '<get_P>b__1_0' () cil managed 
+		instance int32 '<get_P>b__2_0' () cil managed 
 	{
 		.custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
 			01 00 00 00
@@ -3341,7 +2529,7 @@ public class C
 		IL_0000: ldarg.0
 		IL_0001: ldfld int32 C::'<P>k__BackingField'
 		IL_0006: ret
-	} // end of method C::'<get_P>b__1_0'
+	} // end of method C::'<get_P>b__2_0'
 	// Properties
 	.property instance int32 P()
 	{
@@ -3349,149 +2537,6 @@ public class C
 	}
 } // end of class C
 ");
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_ERR_FieldAutoPropCantBeByRefLike()
-        {
-            var comp = CreateCompilationWithSpan(@"
-using System;
-
-public struct S1
-{
-    public Span<int> P { get => field; }
-}
-
-public ref struct S2
-{
-    public Span<int> P { get => field; }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("S1").GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(comp.GetTypeByMetadataName("S2").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics(
-            // PROTOTYPE(semi-auto-props): This should have ERR_FieldAutoPropCantBeByRefLike
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_ReadOnlyPropertyInStruct()
-        {
-            var comp = CreateCompilation(@"
-public struct S
-{
-    public readonly string P { set => field = value; }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics(
-                // (4,39): error CS1604: Cannot assign to 'field' because it is read-only
-                //     public readonly string P { set => field = value; }
-                Diagnostic(ErrorCode.ERR_AssgReadonlyLocal, "field").WithArguments("field").WithLocation(4, 39)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_ERR_AutoPropertyWithSetterCantBeReadOnly()
-        {
-            var comp = CreateCompilation(@"
-public readonly struct S
-{
-    public string P { set => field = value; }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>());
-            // PROTOTYPE(semi-auto-props): An equivalent scenario with explicitly declared field produces a different error:
-            // error CS0191: A readonly field cannot be assigned to (except in a constructor or init-only setter of the type in which the field is defined or a variable initializer)
-            // Need to confirm why these behave differently and if that's acceptable.
-            comp.VerifyDiagnostics(
-                // (4,30): error CS1604: Cannot assign to 'field' because it is read-only
-                //     public string P { set => field = value; }
-                Diagnostic(ErrorCode.ERR_AssgReadonlyLocal, "field").WithArguments("field").WithLocation(4, 30)
-            );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_NoExtraBindingOccurred()
-        {
-            var comp = CreateCompilation(@"
-public class Point
-{
-    public int X { get { return field; } set { field = value; } }
-    public int Y { get { return field; } set { field = value; } }
-}
-");
-            var data = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = data;
-            Assert.Empty(comp.GetTypeByMetadataName("Point").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics();
-            Assert.Equal(0, data.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_BindingOccurs()
-        {
-            var comp = CreateCompilation(@"
-public class Point
-{
-    public Point(int x, int y)
-    {
-        X = x;
-        Y = y;
-    }
-
-    public int X { get { return field; } set { field = value; } }
-    public int Y { get { return field; } set { field = value; } }
-}
-");
-            var data = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = data;
-            Assert.Empty(comp.GetTypeByMetadataName("Point").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics();
-            Assert.Equal(0, data.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void Test_ContainsFieldIdentifierAPI()
-        {
-            var comp = CreateCompilation(@"
-public class C1
-{
-    public int this[int i]
-    {
-        get => field;
-        set => _ = field;
-    }
-}
-
-public class C2
-{
-    public int this[int i] => field;
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-
-            var accessorsC1 = comp.GetTypeByMetadataName("C1").GetMembers().OfType<SourcePropertyAccessorSymbol>().ToArray();
-            Assert.Equal(2, accessorsC1.Length);
-            Assert.False(accessorsC1[0].ContainsFieldIdentifier);
-            Assert.False(accessorsC1[1].ContainsFieldIdentifier);
-
-            var accessorsC2 = comp.GetTypeByMetadataName("C2").GetMembers().OfType<SourcePropertyAccessorSymbol>().ToArray();
-            Assert.Equal(1, accessorsC2.Length);
-            Assert.False(accessorsC2[0].ContainsFieldIdentifier);
-
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3506,10 +2551,11 @@ public class C1
     // public string P2 { get => field; } = string.Empty // PROTOTYPE(semi-auto-props): Uncomment when initializers are supported.
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C1").GetMembers().OfType<FieldSymbol>());
-            comp.VerifyDiagnostics(); // PROTOTYPE(semi-auto-props): Is this the correct behavior?
+            Assert.Single(comp.GetTypeByMetadataName("C1").GetMembers().OfType<FieldSymbol>());
+            comp.VerifyDiagnostics(
+                // (6,19): warning CS9264: Non-nullable property 'P1' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier, or declaring the property as nullable, or adding '[field: MaybeNull, AllowNull]' attributes.
+                //     public string P1 { get => field; }
+                Diagnostic(ErrorCode.WRN_UninitializedNonNullableBackingField, "P1").WithArguments("property", "P1").WithLocation(6, 19));
             // PROTOTYPE(semi-auto-props): If we're going to have a diagnostic that P1 must be non-null when exiting constructor,
             // then we need another test in constructor like:
             /*
@@ -3523,68 +2569,6 @@ public class C1
                 }
              */
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        // PROTOTYPE(semi-auto-props): Add more tests related to MethodCompiler._filterOpt
-        // - Different syntax trees of a partial file.
-        // - Getting the diagnostic for one accessor that doesn't contain field while the other accessor contains field.
-        [Fact]
-        public void CompileMethods_1()
-        {
-            var comp = CreateCompilation(@"
-public class C1
-{
-    public int P1 { get => field; }
-    public int P2 { get => field; }
-}
-");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C1").GetMembers().OfType<FieldSymbol>());
-            var tree = comp.SyntaxTrees[0];
-
-            // Force compiling P1 but not P2
-            _ = comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, tree, tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>().First().Span, includeEarlierStages: true);
-
-            comp.VerifyDiagnostics();
-
-            var properties = comp.GetTypeByMetadataName("C1").GetMembers().OfType<SourcePropertySymbolBase>().ToArray();
-            Assert.Equal(2, properties.Length);
-            Assert.NotNull(properties[0].FieldKeywordBackingField);
-            Assert.NotNull(properties[1].FieldKeywordBackingField);
-
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-        }
-
-        [Fact]
-        public void FieldLocal_PropertyAssignedInConstructor()
-        {
-            var comp = CreateCompilation(@"
-public class C
-{
-    public C()
-    {
-        P = 10;
-    }
-
-    public int P
-    {
-        get
-        {
-            int field = 0;
-            return field;
-        }
-    }
-}");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            comp.VerifyDiagnostics(
-                // (6,9): error CS0200: Property or indexer 'C.P' cannot be assigned to -- it is read only
-                //         P = 10;
-                Diagnostic(ErrorCode.ERR_AssgReadonlyProp, "P").WithArguments("C.P").WithLocation(6, 9)
-                );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -3630,11 +2614,9 @@ class C
 }
 ";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Equal("System.Int32 S_WithAutoProperty.<P>k__BackingField", comp.GetTypeByMetadataName("S_WithAutoProperty").GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
             Assert.Empty(comp.GetTypeByMetadataName("S_WithManualProperty").GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
 
             if (structTreeFirst)
             {
@@ -3664,7 +2646,6 @@ class C
                 Diagnostic(ErrorCode.ERR_UseDefViolation, "s1").WithArguments("s1").WithLocation(19, 37)
             );
 
-            Assert.Equal(structTreeFirst ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -3711,11 +2692,9 @@ class C
 }
 ";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Equal("System.Int32 S_WithAutoProperty.<P>k__BackingField", comp.GetTypeByMetadataName("S_WithAutoProperty").GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
             Assert.Empty(comp.GetTypeByMetadataName("S_WithManualProperty").GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
 
             if (structTreeFirst)
             {
@@ -3731,7 +2710,6 @@ class C
 
             comp.VerifyDiagnostics();
 
-            Assert.Equal(structTreeFirst ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -3783,11 +2761,9 @@ class C
 }
 ";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Equal("System.Int32 S_WithAutoProperty.<P>k__BackingField", comp.GetTypeByMetadataName("S_WithAutoProperty").GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
             Assert.Empty(comp.GetTypeByMetadataName("S_WithManualProperty").GetMembers().OfType<FieldSymbol>());
-            Assert.Empty(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("S_WithSemiAutoProperty").GetMembers().OfType<FieldSymbol>());
 
             if (structTreeFirst)
             {
@@ -3803,7 +2779,6 @@ class C
 
             comp.VerifyDiagnostics();
 
-            Assert.Equal(structTreeFirst ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3820,12 +2795,9 @@ struct S
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3842,12 +2814,9 @@ struct S
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Equal("System.Int32 S.<P>k__BackingField", comp.GetTypeByMetadataName("S").GetMembers().OfType<FieldSymbol>().Single().ToTestDisplayString());
             comp.VerifyDiagnostics();
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -3868,14 +2837,11 @@ struct S2
 }
 ";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, bindS1First ? comp.SyntaxTrees[0] : comp.SyntaxTrees[1], filterSpanWithinTree: null, includeEarlierStages: true).Verify(
                 // (5,15): error CS0523: Struct member 'S1.P' of type 'S2' causes a cycle in the struct layout
                 //     public S2 P { get => field; }
                 Diagnostic(ErrorCode.ERR_StructLayoutCycle, "P").WithArguments(bindS1First ? "S1.P" : "S2.P", bindS1First ? "S2" : "S1").WithLocation(5, 15));
 
-            Assert.Equal(bindS1First ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
 
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, bindS1First ? comp.SyntaxTrees[1] : comp.SyntaxTrees[0], filterSpanWithinTree: null, includeEarlierStages: true).Verify(
                 // (5,15): error CS0523: Struct member 'S2.P' of type 'S1' causes a cycle in the struct layout
@@ -3890,7 +2856,6 @@ struct S2
                 //     public S1 P { get; }
                 Diagnostic(ErrorCode.ERR_StructLayoutCycle, "P").WithArguments("S2.P", "S1").WithLocation(5, 15)
                 );
-            Assert.Equal(bindS1First ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3911,8 +2876,6 @@ struct S2
 }
 ";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, comp.SyntaxTrees[0], filterSpanWithinTree: null, includeEarlierStages: true).Verify(
                 // (5,15): error CS0523: Struct member 'S1.P' of type 'S2' causes a cycle in the struct layout
@@ -3934,7 +2897,6 @@ struct S2
                 //     public S1 P { get; }
                 Diagnostic(ErrorCode.ERR_StructLayoutCycle, "P").WithArguments("S2.P", "S1").WithLocation(5, 15)
                 );
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -3972,12 +2934,8 @@ struct S2
     }
 }";
             var comp = CreateCompilation(new[] { source1, source2 });
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, comp.SyntaxTrees[0], filterSpanWithinTree: null, includeEarlierStages: true).Verify();
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, comp.SyntaxTrees[1], filterSpanWithinTree: null, includeEarlierStages: true).Verify();
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -3998,10 +2956,7 @@ struct S2
     public static S1 P {{ {secondAccessor} }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics();
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4014,14 +2969,11 @@ struct S
     public S P { get => field; }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             comp.VerifyDiagnostics(
                 // (5,14): error CS0523: Struct member 'S.P' of type 'S' causes a cycle in the struct layout
                 //     public S P { get => field; }
                 Diagnostic(ErrorCode.ERR_StructLayoutCycle, "P").WithArguments("S.P", "S").WithLocation(5, 14)
                 );
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -4037,8 +2989,6 @@ class C
     public int P { get => 0; }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4063,7 +3013,6 @@ class C
 
             Assert.Equal(fieldKeywordSymbolInfo, fieldKeywordSymbolInfo2);
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -4080,8 +3029,6 @@ class C
     public int P { get => 0; }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4103,7 +3050,6 @@ class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -4125,8 +3071,6 @@ class C
     }}
 }}
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4151,7 +3095,6 @@ class C
             var aliasInfo = model.GetSpeculativeAliasInfo(token.SpanStart, identifier, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -4174,8 +3117,6 @@ class C
     }}
 }}
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4198,7 +3139,6 @@ class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -4220,8 +3160,6 @@ class C
     }}
 }}
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4255,7 +3193,6 @@ class C
             var aliasInfo = model.GetSpeculativeAliasInfo(token.SpanStart, identifier, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Equal(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
         }
 
@@ -4278,8 +3215,6 @@ class C
     }}
 }}
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4311,7 +3246,6 @@ class C
 
             Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             Assert.Equal(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-            Assert.Equal(runNullableAnalysis == "never" ? 1 : 0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -4327,8 +3261,6 @@ class C
     public int P => 0;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4353,7 +3285,6 @@ class C
             var aliasInfo = model.GetSpeculativeAliasInfo(token.SpanStart, arrowClause.Expression, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -4370,8 +3301,6 @@ class C
     public int P => 0;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4393,7 +3322,6 @@ class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -4409,8 +3337,6 @@ class C
     public int P => 0;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4435,7 +3361,6 @@ class C
             var aliasInfo = model.GetSpeculativeAliasInfo(token.SpanStart, identifier, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -4452,8 +3377,6 @@ class C
     public int P => 0;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4475,7 +3398,6 @@ class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4493,8 +3415,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4513,14 +3433,13 @@ class C
             return field;
         }
     }
-}").GetRoot().DescendantNodes().OfType<BlockSyntax>().Single();
+}", TestOptions.RegularPreview).GetRoot().DescendantNodes().OfType<BlockSyntax>().Single();
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
 
-            var fieldIdentifierSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldIdentifierSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Equal(SymbolKind.Local, fieldIdentifierSymbolInfo.Symbol.Kind);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -4539,8 +3458,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4559,10 +3476,9 @@ class C
     }
 }").GetRoot().DescendantNodes().OfType<BlockSyntax>().Single();
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
-            var fieldIdentifierSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldIdentifierSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Equal(SymbolKind.Local, fieldIdentifierSymbolInfo.Symbol.Kind);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4580,8 +3496,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4601,10 +3515,9 @@ class C
     }
 }").GetRoot().DescendantNodes().OfType<BlockSyntax>().Single();
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4622,8 +3535,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4641,10 +3552,9 @@ class C
     }
 }").GetRoot().DescendantNodes().OfType<BlockSyntax>().Single();
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -4664,8 +3574,6 @@ class C
     }
 }
 ", parseOptions: TestOptions.RegularPreview.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4687,10 +3595,9 @@ class C
     }
 }").GetRoot().DescendantNodes().Single(s => s is BlockSyntax && s.Parent is LocalFunctionStatementSyntax);
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -4710,8 +3617,6 @@ class C
     }
 }
 ", parseOptions: TestOptions.RegularPreview.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4731,10 +3636,9 @@ class C
     }
 }").GetRoot().DescendantNodes().Single(s => s is BlockSyntax && s.Parent is LocalFunctionStatementSyntax);
             model.TryGetSpeculativeSemanticModel(token.SpanStart, block, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(block.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -4760,9 +3664,7 @@ class C
     }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
             var tree = comp.SyntaxTrees[0];
@@ -4795,7 +3697,6 @@ class C
             Assert.Null(aliasInfo);
 
             Assert.Equal("System.Double C.<P>k__BackingField", fieldKeywordSymbolInfo.Symbol.ToTestDisplayString(includeNonNullable: true));
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
         }
 
@@ -4822,8 +3723,6 @@ class C
     }
 }
 ", parseOptions: TestOptions.RegularPreview.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4854,7 +3753,6 @@ class C
 
             Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-            Assert.Equal(runNullableAnalysis == "always" ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4872,8 +3770,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -4893,10 +3789,9 @@ class C
     }
 }").GetRoot().DescendantNodes().OfType<AccessorDeclarationSyntax>().Single();
             model.TryGetSpeculativeSemanticModelForMethodBody(token.SpanStart, accessor, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(accessor.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(accessor.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -4914,8 +3809,6 @@ class C
     }
 }
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -4933,10 +3826,9 @@ class C
     }
 }").GetRoot().DescendantNodes().OfType<AccessorDeclarationSyntax>().Single();
             model.TryGetSpeculativeSemanticModelForMethodBody(token.SpanStart, accessor, out var speculativeModel);
-            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(accessor.DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var fieldKeywordSymbolInfo = speculativeModel.GetSymbolInfo(accessor.DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -4961,9 +3853,7 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
             var tree = comp.SyntaxTrees[0];
@@ -5009,15 +3899,13 @@ class C
             {
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
                 Assert.Equal("System.Double field", fieldKeywordSymbolInfo.Symbol.ToTestDisplayString(includeNonNullable: true));
-                Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-                Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
+                    Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             }
             else
             {
                 Assert.Equal(FieldBindingTestState.BecomesBackingField, bindingState);
                 Assert.Equal("System.Double C.<P>k__BackingField", fieldKeywordSymbolInfo.Symbol.ToTestDisplayString(includeNonNullable: true));
-                Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-                Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
+                    Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
             }
         }
 
@@ -5043,8 +3931,6 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -5085,26 +3971,22 @@ class C
 
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
-                Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
             else
             {
                 Assert.Equal(FieldBindingTestState.BecomesBackingField, bindingState);
-                Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
 
             Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
                 Assert.Equal("System.Int32 field", fieldKeywordSymbolInfo.Symbol.GetSymbol().ToTestDisplayString());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
-                Assert.Equal(2, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
             else
             {
                 Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-                Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
         }
 
         [Theory]
@@ -5129,8 +4011,6 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // error CS1007: Property accessor already defined
@@ -5199,7 +4079,6 @@ class C
             Assert.Null(aliasInfoAsExpression);
             Assert.Null(aliasInfoAsType);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
 
             if (bindingState == FieldBindingTestState.BecomesBackingField)
             {
@@ -5233,8 +4112,6 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken));
@@ -5284,21 +4161,18 @@ class C
             {
                 Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
-                Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
             else if (bindingState == FieldBindingTestState.BecomesBackingField)
             {
                 Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
                 Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-                Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
             else
             {
                 Assert.Equal(FieldBindingTestState.None, bindingState);
                 Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Null(fieldKeywordSymbolInfo.Symbol);
-                Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-            }
+                }
         }
 
         [Theory]
@@ -5323,8 +4197,6 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics(
                 // error CS1007: Property accessor already defined
@@ -5382,7 +4254,6 @@ class C
                 Assert.Null(fieldKeywordSymbolInfo.Symbol);
             }
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
         }
 
@@ -5408,8 +4279,6 @@ class C
     }}
 }}
 ");
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken) && (int)t.Value == numericLiteralToSpeculate);
@@ -5450,8 +4319,7 @@ class C
 
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
-                Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
-                Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
+                    Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Equal("System.Int32 field", fieldKeywordSymbolInfo.Symbol.GetSymbol().ToTestDisplayString());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
             }
@@ -5462,7 +4330,6 @@ class C
                 Assert.Null(fieldKeywordSymbolInfo.Symbol);
             }
 
-            Assert.Equal(numberOfAccessorBinding, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5492,8 +4359,6 @@ public class C
     public bool GetBoolValue() => true;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -5526,7 +4391,6 @@ public class C
             Assert.Null(aliasInfoAsExpression);
             Assert.Null(aliasInfoAsType);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5556,8 +4420,6 @@ public class C
     public bool GetBoolValue() => true;
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var token = tree.GetRoot().DescendantTokens().Single(t => t.IsKind(SyntaxKind.NumericLiteralToken) && t.ValueText == "0");
@@ -5586,7 +4448,6 @@ public class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5610,8 +4471,6 @@ public class C
     }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -5644,7 +4503,6 @@ public class C
             Assert.Null(aliasInfoAsExpression);
             Assert.Null(aliasInfoAsType);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5668,8 +4526,6 @@ public class C
     }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var equalsValueClauseSyntax = (EqualsValueClauseSyntax)tree.GetRoot().DescendantNodes().Single(t => t is EqualsValueClauseSyntax);
@@ -5699,7 +4555,6 @@ public class C
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5723,9 +4578,7 @@ public class C
     }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
             var tree = comp.SyntaxTrees[0];
@@ -5759,7 +4612,6 @@ public class C
             var aliasInfo = model.GetSpeculativeAliasInfo(equalsValueClauseSyntax.SpanStart, newEqualsValueClause.Value, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory]
@@ -5783,8 +4635,6 @@ public class C
     }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var equalsValueClauseSyntax = (EqualsValueClauseSyntax)tree.GetRoot().DescendantNodes().Single(t => t is EqualsValueClauseSyntax);
@@ -5815,7 +4665,6 @@ public class C
 
             Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             Assert.Equal(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-            Assert.Equal(runNullableAnalysis == "always" ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -5841,8 +4690,6 @@ public class MyAttribute : System.Attribute
     public MyAttribute(string s) { }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
             Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
@@ -5874,7 +4721,6 @@ public class MyAttribute : System.Attribute
             var aliasInfo = model.GetSpeculativeAliasInfo(attributeSyntax.SpanStart, fieldNode, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -5900,8 +4746,6 @@ public class MyAttribute : System.Attribute
     public MyAttribute(string s) { }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
 
@@ -5938,7 +4782,6 @@ public class MyAttribute : System.Attribute
 
             Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
             Assert.Null(fieldKeywordSymbolInfo.Symbol);
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -5964,9 +4807,7 @@ public class MyAttribute : System.Attribute
     public MyAttribute(string s) { }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
             var tree = comp.SyntaxTrees[0];
@@ -6005,7 +4846,6 @@ public class MyAttribute : System.Attribute
             var aliasInfo = model.GetSpeculativeAliasInfo(attributeSyntax.SpanStart, fieldNode, bindingOption);
             Assert.Null(aliasInfo);
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Theory, CombinatorialData]
@@ -6031,8 +4871,6 @@ public class MyAttribute : System.Attribute
     public MyAttribute(string s) { }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", runNullableAnalysis));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var attributeSyntax = (AttributeSyntax)tree.GetRoot().DescendantNodes().Single(t => t is AttributeSyntax);
@@ -6069,7 +4907,6 @@ public class MyAttribute : System.Attribute
             Assert.Null(aliasInfo);
 
             Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
-            Assert.Equal(runNullableAnalysis == "always" ? 0 : 1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6081,19 +4918,16 @@ public class C
     public int P1 { get => field; }
 }
 ", parseOptions: TestOptions.RegularNext.WithFeature("run-nullable-analysis", "never"));
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             var tree = comp.SyntaxTrees[0];
             var model = comp.GetSemanticModel(tree);
-            var info = model.GetSymbolInfo(tree.GetRoot().DescendantNodes().OfType<IdentifierNameSyntax>().Single());
+            var info = model.GetSymbolInfo(tree.GetRoot().DescendantNodes().OfType<FieldExpressionSyntax>().Single());
             Assert.Empty(info.CandidateSymbols);
             Assert.False(info.IsEmpty);
             Assert.Equal("System.Int32 C.<P1>k__BackingField", info.Symbol.GetSymbol().ToTestDisplayString());
-            Assert.Empty(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
+            Assert.Single(comp.GetTypeByMetadataName("C").GetMembers().OfType<FieldSymbol>());
             comp.VerifyDiagnostics();
 
-            Assert.Equal(0, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6111,15 +4945,12 @@ public unsafe struct S2
     public int P { get => field; }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (4,16): warning CS8500: This takes the address of, gets the size of, or declares a pointer to a managed type ('S1')
                 //     public S1* s;
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "s").WithArguments("S1").WithLocation(4, 16));
             // PROTOTYPE(semi-auto-props): (Applies to all TestERR_ManagedAddrXX tests) There shouldn't be extra bindings.
-            Assert.Equal(2, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6137,15 +4968,12 @@ public unsafe struct S2
     public S2* P { get => field; }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (5,16): warning CS8500: This takes the address of, gets the size of, or declares a pointer to a managed type ('S1')
                 //     public S1* P { get => field; }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "P").WithArguments("S1").WithLocation(5, 16));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6162,15 +4990,12 @@ public unsafe class C
     public void M(S1* x) { }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (9,23): warning CS8500: This takes the address of, gets the size of, or declares a pointer to a managed type ('S1')
                 //     public void M(S1* x) { }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "x").WithArguments("S1").WithLocation(9, 23));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6192,8 +5017,6 @@ public unsafe class C : I<S1*>
     void I<S1*>.M() { }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (12,21): error CS0306: The type 'S1*' may not be used as a type argument
@@ -6209,7 +5032,6 @@ public unsafe class C : I<S1*>
                 //     void I<S1*>.M() { }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "I<S1*>").WithArguments("S1").WithLocation(14, 10));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6231,8 +5053,6 @@ public unsafe class C : I<S1*>
     int I<S1*>.P { get => throw new System.NotImplementedException(); set => throw new System.NotImplementedException(); }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (12,21): error CS0306: The type 'S1*' may not be used as a type argument
@@ -6248,7 +5068,6 @@ public unsafe class C : I<S1*>
                 //     int I<S1*>.P { get => throw new System.NotImplementedException(); set => throw new System.NotImplementedException(); }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "I<S1*>").WithArguments("S1").WithLocation(14, 9));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6269,15 +5088,12 @@ public unsafe class C
     }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (9,25): warning CS8500: This takes the address of, gets the size of, or declares a pointer to a managed type ('S1')
                 //     public int this[S1* i]
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "i").WithArguments("S1").WithLocation(9, 25));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6294,15 +5110,12 @@ public unsafe class C
     public C(S1* x) { }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (9,18): warning CS8500: This takes the address of, gets the size of, or declares a pointer to a managed type ('S1')
                 //     public C(S1* x) { }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "x").WithArguments("S1").WithLocation(9, 18));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6326,8 +5139,6 @@ public unsafe class C : I<S1*>
     event EventHandler I<S1*>.E { add { } remove { } }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (14,21): error CS0306: The type 'S1*' may not be used as a type argument
@@ -6343,7 +5154,6 @@ public unsafe class C : I<S1*>
                 //     event EventHandler I<S1*>.E { add { } remove { } }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "I<S1*>").WithArguments("S1").WithLocation(16, 24));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6368,8 +5178,6 @@ public unsafe class C : I<MyAlias*>
     event EventHandler I<MyAlias*>.E { add { } remove { } }
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (15,21): error CS0306: The type 'S1*' may not be used as a type argument
@@ -6385,7 +5193,6 @@ public unsafe class C : I<MyAlias*>
                 //     event EventHandler I<MyAlias*>.E { add { } remove { } }
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "I<MyAlias*>").WithArguments("S1").WithLocation(17, 24));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6402,8 +5209,6 @@ public unsafe class C
     event S1* E;
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (9,15): error CS0066: 'C.E': event must be of a delegate type
@@ -6416,7 +5221,6 @@ public unsafe class C
                 //     event S1* E;
                 Diagnostic(ErrorCode.WRN_UnreferencedEvent, "E").WithArguments("C.E").WithLocation(9, 15));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
 
         [Fact]
@@ -6434,8 +5238,6 @@ public unsafe class C<T> where T : I<S1*>
 {
 }
 ", options: TestOptions.UnsafeDebugDll);
-            var accessorBindingData = new SourcePropertySymbolBase.AccessorBindingData();
-            comp.TestOnlyCompilationData = accessorBindingData;
 
             comp.VerifyDiagnostics(
                 // (9,23): error CS0306: The type 'S1*' may not be used as a type argument
@@ -6445,7 +5247,6 @@ public unsafe class C<T> where T : I<S1*>
                 // public unsafe class C<T> where T : I<S1*>
                 Diagnostic(ErrorCode.WRN_ManagedAddr, "T").WithArguments("S1").WithLocation(9, 23));
 
-            Assert.Equal(1, accessorBindingData.NumberOfPerformedAccessorBinding);
         }
     }
 }

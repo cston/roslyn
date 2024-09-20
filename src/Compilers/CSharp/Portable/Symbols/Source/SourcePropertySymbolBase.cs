@@ -785,6 +785,16 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        // PROTOTYPE: This is temporary. And it does not handle partial properties.
+        internal SynthesizedBackingFieldSymbol ForceCreateBackingField()
+        {
+            if (_lazyDeclaredBackingField is null)
+            {
+                Interlocked.CompareExchange(ref _lazyDeclaredBackingField, CreateBackingField(), null);
+            }
+            return _lazyDeclaredBackingField;
+        }
+
         internal void SetMergedBackingField(SynthesizedBackingFieldSymbol? backingField)
         {
             Interlocked.CompareExchange(ref _lazyMergedBackingField, backingField, null);

@@ -1452,6 +1452,14 @@ namespace Microsoft.CodeAnalysis.CSharp
                     break;
                 case MethodSymbol { AssociatedSymbol: SourcePropertySymbol property }:
                     field = property.BackingField;
+                    // PROTOTYPE: Need the same check for default (InContextualAttributeBinder) case below.
+                    if (field is null)
+                    {
+                        Debug.Assert(IsSemanticModelBinder); // PROTOTYPE: Should assert we're in a speculative semantic model.
+                        // PROTOTYPE: We're modifying the property which presumably maybe used by the base semantic
+                        // model. Shouldn't the updated property just be reflected from the speculative semantic model only?
+                        field = property.ForceCreateBackingField();
+                    }
                     break;
                 default:
                     {
