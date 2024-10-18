@@ -8,6 +8,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.PooledObjects;
 
 namespace Microsoft.CodeAnalysis.CSharp
@@ -220,23 +221,39 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             return element switch
             {
-                BoundCollectionExpressionSpreadElement spreadElement => GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo),
+                BoundUnconvertedCollectionExpressionSpreadElement spreadElement => GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo, out _),
                 _ => ClassifyImplicitConversionFromExpression((BoundExpression)element, elementType, ref useSiteInfo),
             };
         }
 
         internal Conversion GetCollectionExpressionSpreadElementConversion(
-            BoundCollectionExpressionSpreadElement element,
+            BoundUnconvertedCollectionExpressionSpreadElement element,
             TypeSymbol targetType,
-            ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+            ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
+            out TypeSymbol? elementType)
         {
-            var enumeratorInfo = element.EnumeratorInfoOpt;
-            if (enumeratorInfo is null)
+            if (element.Expression is BoundUnconvertedCollectionExpression)
             {
-                return Conversion.NoConversion;
+                elementType = targetType;
+            }
+            else
+            {
+                var diagnostics = BindingDiagnosticBag.Discarded; // PROTOTYPE: Is it reasonable to ignore diagnostics?
+                var syntax = (SpreadElementSyntax)element.Syntax;
+                var expression = element.Expression;
+                ForEachEnumeratorInfo.Builder builder;
+                // PROTOTYPE: GetEnumeratorInfoAndInferCollectionElementType() modifies expression. Do we need to propagate that?
+                bool hasErrors = !_binder.GetEnumeratorInfoAndInferCollectionElementType(syntax, syntax.Expression, ref expression, isAsync: false, isSpread: true, diagnostics, inferredType: out _, out builder) ||
+                    builder.IsIncomplete;
+                if (hasErrors)
+                {
+                    elementType = null;
+                    return Conversion.NoConversion;
+                }
+                elementType = builder.ElementType;
             }
             return ClassifyImplicitConversionFromExpression(
-                new BoundValuePlaceholder(element.Syntax, enumeratorInfo.ElementType),
+                new BoundValuePlaceholder(element.Syntax, elementType),
                 targetType,
                 ref useSiteInfo);
         }

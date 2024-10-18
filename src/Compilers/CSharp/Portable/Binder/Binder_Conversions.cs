@@ -909,7 +909,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 var collectionInitializerAddMethodBinder = new CollectionInitializerAddMethodBinder(syntax, targetType, this);
                 foreach (var element in elements)
                 {
-                    BoundNode convertedElement = element is BoundCollectionExpressionSpreadElement spreadElement ?
+                    BoundNode convertedElement = element is BoundUnconvertedCollectionExpressionSpreadElement spreadElement ?
                         (BoundNode)BindCollectionExpressionSpreadElementAddMethod(
                             (SpreadElementSyntax)spreadElement.Syntax,
                             spreadElement,
@@ -983,7 +983,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 var element = elements[i];
                 var elementConversion = elementConversions[i];
-                var convertedElement = element is BoundCollectionExpressionSpreadElement spreadElement ?
+                var convertedElement = element is BoundUnconvertedCollectionExpressionSpreadElement spreadElement ?
                     bindSpreadElement(
                         spreadElement,
                         elementType,
@@ -1000,41 +1000,30 @@ namespace Microsoft.CodeAnalysis.CSharp
                 builder.Add(convertedElement!);
             }
 
-            BoundNode bindSpreadElement(BoundCollectionExpressionSpreadElement element, TypeSymbol elementType, Conversion elementConversion, BindingDiagnosticBag diagnostics)
+            BoundNode bindSpreadElement(BoundUnconvertedCollectionExpressionSpreadElement element, TypeSymbol elementType, Conversion elementConversion, BindingDiagnosticBag diagnostics)
             {
-                var enumeratorInfo = element.EnumeratorInfoOpt;
-                Debug.Assert(enumeratorInfo is { });
-                Debug.Assert(enumeratorInfo.ElementType is { }); // ElementType is set always, even for IEnumerable.
-
-                var expressionSyntax = element.Expression.Syntax;
-                var elementPlaceholder = new BoundValuePlaceholder(expressionSyntax, enumeratorInfo.ElementType) { WasCompilerGenerated = true };
-                var convertElement = CreateConversion(
-                    expressionSyntax,
-                    elementPlaceholder,
-                    elementConversion,
-                    isCast: false,
-                    conversionGroupOpt: null,
-                    destination: elementType,
-                    diagnostics);
-                return element.Update(
-                    element.Expression,
-                    expressionPlaceholder: element.ExpressionPlaceholder,
-                    conversion: element.Conversion,
-                    enumeratorInfo,
-                    elementPlaceholder: elementPlaceholder,
-                    iteratorBody: new BoundExpressionStatement(expressionSyntax, convertElement) { WasCompilerGenerated = true },
-                    lengthOrCount: element.LengthOrCount);
+                var expression = element.Expression;
+                // PROTOTYPE: What about other cases such as:
+                // - conditional expression: b ? [x] : []
+                // - switch expression: b switch { true => [x], false => [] }
+                // PROTOTYPE: For the spec, this is one of the few scenarios where we allow an "unspecified collection" type as the target type.
+                // PROTOTYPE: Spec: Does `..default` or `..null` bind successfully, even if they result in NRE at runtime? In short, are we really saying that `..` has a target type?
+                if (expression is BoundUnconvertedCollectionExpression unconvertedCollection)
+                {
+                    expression = ConvertCollectionExpressionElements(unconvertedCollection, elementType, diagnostics);
+                }
+                return BindCollectionExpressionSpreadElement((SpreadElementSyntax)element.Syntax, expression, elementType, elementConversion, diagnostics);
             }
         }
 
+        // PROTOTYPE: Why is this called ConvertCollectionExpressionElements? It converts an
+        // unconverted collection expression, not just the elements.
         private BoundExpression ConvertCollectionExpressionElements(
             BoundUnconvertedCollectionExpression node,
             TypeSymbol? elementType,
             BindingDiagnosticBag diagnostics)
         {
             var syntax = node.Syntax;
-
-            elementType ??= node.InferredElementType;
 
             // PROTOTYPE: Test with no element type.
             if (elementType is null)
@@ -1044,31 +1033,19 @@ namespace Microsoft.CodeAnalysis.CSharp
                 return BadExpression(syntax);
             }
 
-            var elements = node.Elements;
-            var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
-            var elementConversions = ArrayBuilder<Conversion>.GetInstance(elements.Length);
-            foreach (var element in elements)
+            var collectionType = GetSynthesizedCollectionExpressionCollectionType(syntax, Compilation, TypeWithAnnotations.Create(elementType), diagnostics); // PROTOTYPE: Ignoring element nullability.
+            var conversion = ConvertCollectionExpressionElementsConversionOnly(node, elementType, diagnostics);
+            BoundCollectionExpression collectionExpression;
+            if (conversion.Exists)
             {
-                Conversion elementConversion = Conversions.GetCollectionExpressionElementConversion(element, elementType, ref useSiteInfo);
-                if (!elementConversion.Exists)
-                {
-                    elementConversions.Free();
-                    // PROTOTYPE: Are we testing this case?
-                    // PROTOTYPE: Report specific error.
-                    return BadExpression(syntax);
-                }
-                elementConversions.Add(elementConversion);
+                collectionExpression = ConvertCollectionExpression(node, collectionType, conversion, diagnostics);
+            }
+            else
+            {
+                GenerateImplicitConversionErrorForCollectionExpression(node, collectionType, diagnostics);
+                collectionExpression = BindCollectionExpressionForErrorRecovery(node, collectionType, inConversion: true, diagnostics);
             }
 
-            var conversion = Conversion.CreateCollectionExpressionConversion(
-                CollectionExpressionTypeKind.CompilerGenerated,
-                elementType,
-                constructor: null,
-                constructorUsedInExpandedForm: false,
-                elementConversions.ToImmutableAndFree());
-            var collectionType = getCollectionType(Compilation, TypeWithAnnotations.Create(elementType)); // PROTOTYPE: Ignoring element nullability.
-            ReportUseSite(collectionType, diagnostics, syntax);
-            var collectionExpression = ConvertCollectionExpression(node, collectionType, conversion, diagnostics);
             return new BoundConversion(
                 syntax,
                 collectionExpression,
@@ -1078,20 +1055,46 @@ namespace Microsoft.CodeAnalysis.CSharp
                 conversionGroupOpt: null,
                 constantValueOpt: null,
                 type: collectionType);
+        }
 
-            static TypeSymbol getCollectionType(CSharpCompilation compilation, TypeWithAnnotations elementType)
+        private static TypeSymbol GetSynthesizedCollectionExpressionCollectionType(SyntaxNode syntax, CSharpCompilation compilation, TypeWithAnnotations elementType, BindingDiagnosticBag diagnostics)
+        {
+            // PROTOTYPE: Shouldn't use ReadOnlySpan<T> in an async context,
+            // nor when the element type is a ref struct or a pointer type.
+            // PROTOTYPE: Should fallback to T[] if inline array is not available. Add to spec.
+            var spanType = compilation.GetWellKnownType(WellKnownType.System_ReadOnlySpan_T);
+            var collectionType = spanType.IsErrorType() ?
+                (TypeSymbol)ArrayTypeSymbol.CreateSZArray(compilation.SourceAssembly, elementType) :
+                spanType.Construct([elementType]);
+            ReportUseSite(collectionType, diagnostics, syntax);
+            return collectionType;
+        }
+
+        private Conversion ConvertCollectionExpressionElementsConversionOnly(
+            BoundUnconvertedCollectionExpression node,
+            TypeSymbol elementType,
+            BindingDiagnosticBag diagnostics)
+        {
+            var elements = node.Elements;
+            var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
+            var elementConversions = ArrayBuilder<Conversion>.GetInstance(elements.Length);
+            foreach (var element in elements)
             {
-                // PROTOTYPE: Shouldn't use ReadOnlySpan<T> in an async context,
-                // nor when the element type is a ref struct or a pointer type.
-                // PROTOTYPE: Should fallback to T[] if inline array is not available. Add to spec.
-                var spanType = compilation.GetWellKnownType(WellKnownType.System_ReadOnlySpan_T);
-                if (!spanType.IsErrorType())
+                Conversion elementConversion = Conversions.GetCollectionExpressionElementConversion(element, elementType, ref useSiteInfo);
+                if (!elementConversion.Exists)
                 {
-                    return spanType.Construct([elementType]);
+                    elementConversions.Free();
+                    return Conversion.NoConversion;
                 }
-
-                return ArrayTypeSymbol.CreateSZArray(compilation.SourceAssembly, elementType);
+                elementConversions.Add(elementConversion);
             }
+
+            return Conversion.CreateCollectionExpressionConversion(
+                CollectionExpressionTypeKind.CompilerGenerated,
+                elementType,
+                constructor: null,
+                constructorUsedInExpandedForm: false,
+                elementConversions.ToImmutableAndFree());
         }
 
         private bool HasCollectionInitializerTypeInProgress(SyntaxNode syntax, TypeSymbol targetType)
@@ -1873,22 +1876,22 @@ namespace Microsoft.CodeAnalysis.CSharp
                 var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
                 foreach (var element in elements)
                 {
-                    if (element is BoundCollectionExpressionSpreadElement spreadElement)
+                    if (element is BoundUnconvertedCollectionExpressionSpreadElement spreadElement)
                     {
-                        var enumeratorInfo = spreadElement.EnumeratorInfoOpt;
-                        if (enumeratorInfo is null)
+                        TypeSymbol? enumeratorElementType;
+                        Conversion elementConversion = Conversions.GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo, out enumeratorElementType);
+                        if (!elementConversion.Exists)
                         {
-                            Error(diagnostics, ErrorCode.ERR_NoImplicitConv, spreadElement.Expression.Syntax, spreadElement.Expression.Display, elementType);
-                            reportedErrors = true;
-                        }
-                        else
-                        {
-                            Conversion elementConversion = Conversions.GetCollectionExpressionSpreadElementConversion(spreadElement, elementType, ref useSiteInfo);
-                            if (!elementConversion.Exists)
+                            if (enumeratorElementType  is null)
                             {
-                                GenerateImplicitConversionError(diagnostics, this.Compilation, spreadElement.Expression.Syntax, elementConversion, enumeratorInfo.ElementType, elementType);
-                                reportedErrors = true;
+                                // PROTOTYPE: Are we hitting this case?
+                                Error(diagnostics, ErrorCode.ERR_NoImplicitConv, spreadElement.Expression.Syntax, spreadElement.Expression.Display, elementType);
                             }
+                            else
+                            {
+                                GenerateImplicitConversionError(diagnostics, this.Compilation, spreadElement.Expression.Syntax, elementConversion, enumeratorElementType, elementType);
+                            }
+                            reportedErrors = true;
                         }
                     }
                     else

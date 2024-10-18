@@ -22374,9 +22374,15 @@ partial class Program
                 """;
             var comp = CreateCompilation(source);
             comp.VerifyEmitDiagnostics(
-                // (5,9): error CS0030: Cannot convert type 'int' to 'string'
+                // (5,31): error CS0029: Cannot implicitly convert type 'int' to 'string'
                 //         foreach (string s in [1, 2, 3])
-                Diagnostic(ErrorCode.ERR_NoExplicitConv, "foreach").WithArguments("int", "string").WithLocation(5, 9));
+                Diagnostic(ErrorCode.ERR_NoImplicitConv, "1").WithArguments("int", "string").WithLocation(5, 31),
+                // (5,34): error CS0029: Cannot implicitly convert type 'int' to 'string'
+                //         foreach (string s in [1, 2, 3])
+                Diagnostic(ErrorCode.ERR_NoImplicitConv, "2").WithArguments("int", "string").WithLocation(5, 34),
+                // (5,37): error CS0029: Cannot implicitly convert type 'int' to 'string'
+                //         foreach (string s in [1, 2, 3])
+                Diagnostic(ErrorCode.ERR_NoImplicitConv, "3").WithArguments("int", "string").WithLocation(5, 37));
         }
 
         [Fact]
@@ -22457,39 +22463,90 @@ partial class Program
             verifier.VerifyIL("Program.Main",
                 """
                 {
-                  // Code size       58 (0x3a)
-                  .maxstack  3
+                  // Code size      146 (0x92)
+                  .maxstack  5
                   .locals init (System.ReadOnlySpan<byte> V_0,
                                 int V_1,
-                                byte V_2) //b
+                                byte V_2,
+                                System.ReadOnlySpan<byte> V_3,
+                                int V_4,
+                                byte[] V_5,
+                                System.Span<byte> V_6,
+                                byte V_7) //b
                   IL_0000:  ldloca.s   V_0
-                  IL_0002:  ldsflda    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=3 <PrivateImplementationDetails>.039058C6F2C0CB492C533B0A4D14EF77CC0F78ABCCCED5287D84A1A2011CFB81"
-                  IL_0007:  ldc.i4.3
-                  IL_0008:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
-                  IL_000d:  ldc.i4.0
-                  IL_000e:  stloc.1
-                  IL_000f:  br.s       IL_002f
-                  IL_0011:  ldloca.s   V_0
-                  IL_0013:  ldloc.1
-                  IL_0014:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
-                  IL_0019:  ldind.u1
-                  IL_001a:  stloc.2
-                  IL_001b:  ldstr      "{0}, "
-                  IL_0020:  ldloc.2
-                  IL_0021:  box        "byte"
-                  IL_0026:  call       "void System.Console.Write(string, object)"
-                  IL_002b:  ldloc.1
+                  IL_0002:  ldc.i4.1
+                  IL_0003:  stloc.2
+                  IL_0004:  ldloca.s   V_3
+                  IL_0006:  ldsflda    "short <PrivateImplementationDetails>.EE9040F65C341855E070FF438EB0EA9D5B831B2A2C270FB7EF592D750408E3B3"
+                  IL_000b:  ldc.i4.2
+                  IL_000c:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
+                  IL_0011:  ldc.i4.0
+                  IL_0012:  stloc.s    V_4
+                  IL_0014:  ldc.i4.1
+                  IL_0015:  ldloca.s   V_3
+                  IL_0017:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_001c:  add
+                  IL_001d:  newarr     "byte"
+                  IL_0022:  stloc.s    V_5
+                  IL_0024:  ldloc.s    V_5
+                  IL_0026:  ldloc.s    V_4
+                  IL_0028:  ldloc.2
+                  IL_0029:  stelem.i1
+                  IL_002a:  ldloc.s    V_4
                   IL_002c:  ldc.i4.1
                   IL_002d:  add
-                  IL_002e:  stloc.1
-                  IL_002f:  ldloc.1
-                  IL_0030:  ldloca.s   V_0
-                  IL_0032:  call       "int System.ReadOnlySpan<byte>.Length.get"
-                  IL_0037:  blt.s      IL_0011
-                  IL_0039:  ret
+                  IL_002e:  stloc.s    V_4
+                  IL_0030:  ldloca.s   V_3
+                  IL_0032:  ldloc.s    V_5
+                  IL_0034:  newobj     "System.Span<byte>..ctor(byte[])"
+                  IL_0039:  stloc.s    V_6
+                  IL_003b:  ldloca.s   V_6
+                  IL_003d:  ldloc.s    V_4
+                  IL_003f:  ldloca.s   V_3
+                  IL_0041:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_0046:  call       "System.Span<byte> System.Span<byte>.Slice(int, int)"
+                  IL_004b:  call       "void System.ReadOnlySpan<byte>.CopyTo(System.Span<byte>)"
+                  IL_0050:  ldloc.s    V_4
+                  IL_0052:  ldloca.s   V_3
+                  IL_0054:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_0059:  add
+                  IL_005a:  stloc.s    V_4
+                  IL_005c:  ldloc.s    V_5
+                  IL_005e:  call       "System.ReadOnlySpan<byte>..ctor(byte[])"
+                  IL_0063:  ldc.i4.0
+                  IL_0064:  stloc.1
+                  IL_0065:  br.s       IL_0087
+                  IL_0067:  ldloca.s   V_0
+                  IL_0069:  ldloc.1
+                  IL_006a:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
+                  IL_006f:  ldind.u1
+                  IL_0070:  stloc.s    V_7
+                  IL_0072:  ldstr      "{0}, "
+                  IL_0077:  ldloc.s    V_7
+                  IL_0079:  box        "byte"
+                  IL_007e:  call       "void System.Console.Write(string, object)"
+                  IL_0083:  ldloc.1
+                  IL_0084:  ldc.i4.1
+                  IL_0085:  add
+                  IL_0086:  stloc.1
+                  IL_0087:  ldloc.1
+                  IL_0088:  ldloca.s   V_0
+                  IL_008a:  call       "int System.ReadOnlySpan<byte>.Length.get"
+                  IL_008f:  blt.s      IL_0067
+                  IL_0091:  ret
                 }
                 """);
         }
+
+        // PROTOTYPE: Proposal:
+        // - Inferred type of a collection expression is col<T> where the context decides the containing collection type col<>.
+        // - Target type of a spread or a collection expression in a foreach is col<T> where the context decides the containing collection type col<>.
+        // - What if inline arrays are not supported by the runtime? Do we fallback to array?
+        // - Do we use arrays from RVA when possible?
+        // - Inline arrays are not supported as collection expression target types in the language. Is that an issue that we're using it internally in this case?
+        // - What if the element type is a ref struct? Could we use that in a ref struct inline array type? What if the context is async? Perhaps disallow ref struct instances in inline collection expressions.
+        // - Disallow any element type that cannot be used as a type argument?
+        // - Allow pointer types for element type?
 
         [Fact]
         public void ForEach_CollectionExpression_09()
@@ -22509,40 +22566,44 @@ partial class Program
                 source,
                 targetFramework: TargetFramework.Net80,
                 verify: Verification.Skipped,
-                expectedOutput: IncludeExpectedOutput("1, 2, 3, "));
+                expectedOutput: IncludeExpectedOutput("2, 3, "));
             verifier.VerifyIL("Program.Main",
                 """
                 {
-                  // Code size       58 (0x3a)
-                  .maxstack  3
-                  .locals init (System.ReadOnlySpan<byte> V_0,
+                  // Code size       70 (0x46)
+                  .maxstack  2
+                  .locals init (System.ReadOnlySpan<int> V_0,
                                 int V_1,
-                                byte V_2) //b
+                                System.ReadOnlySpan<int> V_2,
+                                int V_3) //i
                   IL_0000:  ldloca.s   V_0
-                  IL_0002:  ldsflda    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=3 <PrivateImplementationDetails>.039058C6F2C0CB492C533B0A4D14EF77CC0F78ABCCCED5287D84A1A2011CFB81"
-                  IL_0007:  ldc.i4.3
-                  IL_0008:  call       "System.ReadOnlySpan<byte>..ctor(void*, int)"
-                  IL_000d:  ldc.i4.0
-                  IL_000e:  stloc.1
-                  IL_000f:  br.s       IL_002f
-                  IL_0011:  ldloca.s   V_0
-                  IL_0013:  ldloc.1
-                  IL_0014:  call       "ref readonly byte System.ReadOnlySpan<byte>.this[int].get"
-                  IL_0019:  ldind.u1
-                  IL_001a:  stloc.2
-                  IL_001b:  ldstr      "{0}, "
-                  IL_0020:  ldloc.2
-                  IL_0021:  box        "byte"
-                  IL_0026:  call       "void System.Console.Write(string, object)"
-                  IL_002b:  ldloc.1
-                  IL_002c:  ldc.i4.1
-                  IL_002d:  add
-                  IL_002e:  stloc.1
-                  IL_002f:  ldloc.1
-                  IL_0030:  ldloca.s   V_0
-                  IL_0032:  call       "int System.ReadOnlySpan<byte>.Length.get"
-                  IL_0037:  blt.s      IL_0011
-                  IL_0039:  ret
+                  IL_0002:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=8_Align=4 <PrivateImplementationDetails>.0C40FC912BEA3D01B4DBAD07DE4C8CF177AC0C424BC11D622D2239C0E59889864"
+                  IL_0007:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
+                  IL_000c:  stloc.2
+                  IL_000d:  ldloca.s   V_2
+                  IL_000f:  call       "int[] System.ReadOnlySpan<int>.ToArray()"
+                  IL_0014:  call       "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0019:  ldc.i4.0
+                  IL_001a:  stloc.1
+                  IL_001b:  br.s       IL_003b
+                  IL_001d:  ldloca.s   V_0
+                  IL_001f:  ldloc.1
+                  IL_0020:  call       "ref readonly int System.ReadOnlySpan<int>.this[int].get"
+                  IL_0025:  ldind.i4
+                  IL_0026:  stloc.3
+                  IL_0027:  ldstr      "{0}, "
+                  IL_002c:  ldloc.3
+                  IL_002d:  box        "int"
+                  IL_0032:  call       "void System.Console.Write(string, object)"
+                  IL_0037:  ldloc.1
+                  IL_0038:  ldc.i4.1
+                  IL_0039:  add
+                  IL_003a:  stloc.1
+                  IL_003b:  ldloc.1
+                  IL_003c:  ldloca.s   V_0
+                  IL_003e:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0043:  blt.s      IL_001d
+                  IL_0045:  ret
                 }
                 """);
         }
@@ -22572,7 +22633,14 @@ partial class Program
             verifier.VerifyIL("Program.F",
                 """
                 {
-                  ...
+                  // Code size       15 (0xf)
+                  .maxstack  2
+                  .locals init (System.ReadOnlySpan<int?> V_0)
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  dup
+                  IL_0003:  initobj    "System.ReadOnlySpan<int?>"
+                  IL_0009:  call       "int?[] System.ReadOnlySpan<int?>.ToArray()"
+                  IL_000e:  ret
                 }
                 """);
         }
@@ -22599,11 +22667,111 @@ partial class Program
                 targetFramework: targetFramework,
                 verify: Verification.Skipped,
                 expectedOutput: IncludeExpectedOutput("[2], "));
-            // PROTOTYPE: Should use inline array on .NET 8, not on .NET 7.
+            if (targetFramework == TargetFramework.Net70)
+            {
+                verifier.VerifyIL("Program.F",
+                    """
+                    {
+                      // Code size       33 (0x21)
+                      .maxstack  4
+                      .locals init (System.ReadOnlySpan<int?> V_0)
+                      IL_0000:  ldc.i4.1
+                      IL_0001:  newarr     "int?"
+                      IL_0006:  dup
+                      IL_0007:  ldc.i4.0
+                      IL_0008:  ldc.i4.2
+                      IL_0009:  newobj     "int?..ctor(int)"
+                      IL_000e:  stelem     "int?"
+                      IL_0013:  newobj     "System.ReadOnlySpan<int?>..ctor(int?[])"
+                      IL_0018:  stloc.0
+                      IL_0019:  ldloca.s   V_0
+                      IL_001b:  call       "int?[] System.ReadOnlySpan<int?>.ToArray()"
+                      IL_0020:  ret
+                    }
+                    """);
+            }
+            else
+            {
+                verifier.VerifyIL("Program.F",
+                    """
+                    {
+                      // Code size       24 (0x18)
+                      .maxstack  2
+                      .locals init (int? V_0,
+                                    System.ReadOnlySpan<int?> V_1)
+                      IL_0000:  ldloca.s   V_0
+                      IL_0002:  ldc.i4.2
+                      IL_0003:  call       "int?..ctor(int)"
+                      IL_0008:  ldloca.s   V_0
+                      IL_000a:  newobj     "System.ReadOnlySpan<int?>..ctor(ref readonly int?)"
+                      IL_000f:  stloc.1
+                      IL_0010:  ldloca.s   V_1
+                      IL_0012:  call       "int?[] System.ReadOnlySpan<int?>.ToArray()"
+                      IL_0017:  ret
+                    }
+                    """);
+            }
+        }
+
+        [Fact]
+        public void Spread_CollectionExpression_03()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        int[] a = F(true, 1, 2);
+                        a.Report();
+                    }
+                    static T[] F<T>(bool b, T x, T y)
+                    {
+                        return [x, .. b ? [y] : []];
+                    }
+                }
+                """;
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensions],
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[1, 2], "));
             verifier.VerifyIL("Program.F",
                 """
                 {
-                  ...
+                  // Code size       70 (0x46)
+                  .maxstack  2
+                  .locals init (System.ReadOnlySpan<int> V_0,
+                                int V_1,
+                                System.ReadOnlySpan<int> V_2,
+                                int V_3) //i
+                  IL_0000:  ldloca.s   V_0
+                  IL_0002:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=8_Align=4 <PrivateImplementationDetails>.0C40FC912BEA3D01B4DBAD07DE4C8CF177AC0C424BC11D622D2239C0E59889864"
+                  IL_0007:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
+                  IL_000c:  stloc.2
+                  IL_000d:  ldloca.s   V_2
+                  IL_000f:  call       "int[] System.ReadOnlySpan<int>.ToArray()"
+                  IL_0014:  call       "System.ReadOnlySpan<int>..ctor(int[])"
+                  IL_0019:  ldc.i4.0
+                  IL_001a:  stloc.1
+                  IL_001b:  br.s       IL_003b
+                  IL_001d:  ldloca.s   V_0
+                  IL_001f:  ldloc.1
+                  IL_0020:  call       "ref readonly int System.ReadOnlySpan<int>.this[int].get"
+                  IL_0025:  ldind.i4
+                  IL_0026:  stloc.3
+                  IL_0027:  ldstr      "{0}, "
+                  IL_002c:  ldloc.3
+                  IL_002d:  box        "int"
+                  IL_0032:  call       "void System.Console.Write(string, object)"
+                  IL_0037:  ldloc.1
+                  IL_0038:  ldc.i4.1
+                  IL_0039:  add
+                  IL_003a:  stloc.1
+                  IL_003b:  ldloc.1
+                  IL_003c:  ldloca.s   V_0
+                  IL_003e:  call       "int System.ReadOnlySpan<int>.Length.get"
+                  IL_0043:  blt.s      IL_001d
+                  IL_0045:  ret
                 }
                 """);
         }
