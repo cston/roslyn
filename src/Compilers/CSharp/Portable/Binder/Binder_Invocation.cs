@@ -1738,7 +1738,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     MessageID.IDS_FeatureParamsCollections.CheckFeatureAvailability(diagnostics, node);
                 }
 
-                var unconvertedCollection = new BoundUnconvertedCollectionExpression(node, inferredElementType: null, ImmutableArray<BoundNode>.CastUp(collectionArgs)) { WasCompilerGenerated = true, IsParamsArrayOrCollection = true };
+                var unconvertedCollection = new BoundUnconvertedCollectionExpression(node, ImmutableArray<BoundNode>.CastUp(collectionArgs)) { WasCompilerGenerated = true, IsParamsArrayOrCollection = true };
                 CompoundUseSiteInfo<AssemblySymbol> useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
                 Conversion conversion = Conversions.ClassifyImplicitConversionFromExpression(unconvertedCollection, collectionType, ref useSiteInfo);
                 diagnostics.Add(node, useSiteInfo);

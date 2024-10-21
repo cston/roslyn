@@ -7894,7 +7894,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     }
 
                     // PROTOTYPE: Do we need to infer element type?
-                    return new BoundUnconvertedCollectionExpression(collection.Syntax, inferredElementType: null, elementsBuilder.ToImmutableAndFree()) { WasCompilerGenerated = true };
+                    return new BoundUnconvertedCollectionExpression(collection.Syntax, elementsBuilder.ToImmutableAndFree()) { WasCompilerGenerated = true };
                 }
 
                 // Note: for `out` arguments, the argument result contains the declaration type (see `VisitArgumentEvaluate`)

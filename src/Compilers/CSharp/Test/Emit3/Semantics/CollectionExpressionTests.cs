@@ -22713,6 +22713,13 @@ partial class Program
             }
         }
 
+        // PROTOTYPE: Should byte[] a = [.. b ? [1] : []]; be allowed? That requires converting multiple levels
+        // of collection expressions at once. The only example we have of that currently is nested tuple literals.
+        // Or, should we simply use the natural type of `b ? [1] : []` and report an error that `int` cannot be converted to `byte`?
+        // The question is really: Do we use the natural type of the spread element expression rather than using the target element of the containing collection expression?
+        // If we use the natural type of the expression for spread elements, then we'd probably do the same for foreach,
+        // so `foreach (byte b in [])` would probably fail, as would `foreach (string s in [default])`.
+
         [Fact]
         public void Spread_CollectionExpression_03()
         {

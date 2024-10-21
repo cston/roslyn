@@ -1020,19 +1020,12 @@ namespace Microsoft.CodeAnalysis.CSharp
         // unconverted collection expression, not just the elements.
         private BoundExpression ConvertCollectionExpressionElements(
             BoundUnconvertedCollectionExpression node,
-            TypeSymbol? elementType,
+            TypeSymbol elementType,
             BindingDiagnosticBag diagnostics)
         {
+            Debug.Assert(elementType is { });
+
             var syntax = node.Syntax;
-
-            // PROTOTYPE: Test with no element type.
-            if (elementType is null)
-            {
-                // PROTOTYPE: Report specific error.
-                diagnostics.Add(ErrorCode.ERR_ImplicitObjectCreationNoTargetType, syntax.Location, node.Display);
-                return BadExpression(syntax);
-            }
-
             var collectionType = GetSynthesizedCollectionExpressionCollectionType(syntax, Compilation, TypeWithAnnotations.Create(elementType), diagnostics); // PROTOTYPE: Ignoring element nullability.
             var conversion = ConvertCollectionExpressionElementsConversionOnly(node, elementType, diagnostics);
             BoundCollectionExpression collectionExpression;

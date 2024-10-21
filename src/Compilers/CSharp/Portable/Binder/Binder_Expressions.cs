@@ -391,11 +391,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     break;
                 case BoundUnconvertedCollectionExpression expr:
                     {
-                        if (reportNoTargetType && !expr.HasAnyErrors)
-                        {
-                            diagnostics.Add(ErrorCode.ERR_CollectionExpressionNoTargetType, expr.Syntax.GetLocation());
-                        }
-                        result = BindCollectionExpressionForErrorRecovery(expr, CreateErrorType(), inConversion: false, diagnostics);
+                        result = BindCollectionExpressionToNaturalType(expr, diagnostics);
                     }
                     break;
                 default:
@@ -5204,8 +5200,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 builder.Add(bindElement(element, diagnostics, this, nestingLevel));
             }
-            var elements = builder.ToImmutableAndFree();
-            return new BoundUnconvertedCollectionExpression(syntax, inferredElementType: InferCollectionExpressionElementType(elements), elements);
+            return new BoundUnconvertedCollectionExpression(syntax, builder.ToImmutableAndFree());
 
             static BoundNode bindElement(CollectionElementSyntax syntax, BindingDiagnosticBag diagnostics, Binder @this, int nestingLevel)
             {
@@ -5300,76 +5295,69 @@ namespace Microsoft.CodeAnalysis.CSharp
         internal BoundExpression BindForEachCollection(ExpressionSyntax syntax, TypeSymbol? elementType, BindingDiagnosticBag diagnostics)
         {
             BoundExpression expr = BindValue(syntax, diagnostics, BindValueKind.RValue);
-            if (expr is BoundUnconvertedCollectionExpression unconvertedCollection)
+            if (expr is BoundUnconvertedCollectionExpression unconvertedCollection && elementType is { })
             {
-                return ConvertCollectionExpressionElements(unconvertedCollection, elementType ?? unconvertedCollection.InferredElementType, diagnostics);
+                return ConvertCollectionExpressionElements(unconvertedCollection, elementType, diagnostics);
             }
             return BindToNaturalType(expr, diagnostics);
         }
 
-        private TypeSymbol? InferCollectionExpressionElementType(ImmutableArray<BoundNode> elements)
+        private BoundExpression BindCollectionExpressionToNaturalType(BoundUnconvertedCollectionExpression expr, BindingDiagnosticBag diagnostics)
         {
-            var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded; // PROTOTYPE: Include use-site diagnostics.
+            var elements = expr.Elements;
+            var builder = ArrayBuilder<BoundNode>.GetInstance(elements.Length);
+            foreach (var element in elements)
+            {
+                builder.Add(bindElementToNaturalType(this, element, diagnostics));
+            }
+            elements = builder.ToImmutableAndFree();
+
+            expr = expr.Update(elements); // PROTOTYPE: We should only update any of the elements changed, not the array.
+
             var types = ArrayBuilder<TypeSymbol>.GetInstance();
             foreach (var element in elements)
             {
-                types.AddIfNotNull(getInferredElementType(this, element));
+                types.AddIfNotNull(getInferredElementType(this, element, diagnostics));
             }
+            var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded; // PROTOTYPE: Include use-site diagnostics.
             var bestType = BestTypeInferrer.GetBestType(types, Conversions, ref useSiteInfo);
             types.Free();
 
-            if (bestType is null || bestType.IsVoidType()) // PROTOTYPE: Test void type.
+            if (bestType is null)
             {
-                return null;
+                diagnostics.Add(ErrorCode.ERR_CollectionExpressionNoTargetType, expr.Syntax.GetLocation());
+                return BindCollectionExpressionForErrorRecovery(expr, CreateErrorType(), inConversion: false, diagnostics);
             }
 
-            // Check that each element (even those without a type) can be converted to the best type.
-            foreach (var element in elements)
+            return ConvertCollectionExpressionElements(expr, bestType, diagnostics);
+
+            static BoundNode bindElementToNaturalType(Binder binder, BoundNode element, BindingDiagnosticBag diagnostics)
             {
-                // PROTOTYPE: Test with elements that cannot be converted.
-                // PROTOTYPE: Test with elements without a type that can/cannot be converted.
-                // PROTOTYPE: Test with spread elements with/without a type.
                 if (element is BoundUnconvertedCollectionExpressionSpreadElement spreadElement)
                 {
-                    // PROTOTYPE: Test with inline collection expressions and simple expressions.
+                    return spreadElement.Update(binder.BindToNaturalType(spreadElement.Expression, diagnostics));
                 }
                 else
                 {
-                    if (!Conversions.ClassifyImplicitConversionFromExpression((BoundExpression)element, bestType, ref useSiteInfo).Exists)
-                    {
-                        return null;
-                    }
+                    return binder.BindToNaturalType((BoundExpression)element, diagnostics);
                 }
             }
 
-            return bestType;
-
-            static TypeSymbol? getInferredElementType(Binder binder, BoundNode element)
+            static TypeSymbol? getInferredElementType(Binder binder, BoundNode element, BindingDiagnosticBag diagnostics)
             {
                 if (element is BoundUnconvertedCollectionExpressionSpreadElement spreadElement)
                 {
-                    // PROTOTYPE: What about other cases such as:
-                    // - conditional expression: b ? [x] : []
-                    // - switch expression: b switch { true => [x], false => [] }
-                    if (spreadElement.Expression is BoundUnconvertedCollectionExpression unconvertedCollection)
+                    var syntax = (SpreadElementSyntax)spreadElement.Syntax;
+                    var expression = spreadElement.Expression;
+                    ForEachEnumeratorInfo.Builder builder;
+                    // PROTOTYPE: GetEnumeratorInfoAndInferCollectionElementType() potentially modifies expression. Do we need to propagate that?
+                    bool hasErrors = !binder.GetEnumeratorInfoAndInferCollectionElementType(syntax, syntax.Expression, ref expression, isAsync: false, isSpread: true, diagnostics, inferredType: out _, out builder) ||
+                        builder.IsIncomplete;
+                    if (hasErrors)
                     {
-                        return unconvertedCollection.InferredElementType;
+                        return null;
                     }
-                    else
-                    {
-                        var syntax = (SpreadElementSyntax)spreadElement.Syntax;
-                        var diagnostics = BindingDiagnosticBag.Discarded; // PROTOTYPE: Should we include diagnostics?
-                        var expression = binder.BindToNaturalType(spreadElement.Expression, diagnostics);
-                        ForEachEnumeratorInfo.Builder builder;
-                        // PROTOTYPE: GetEnumeratorInfoAndInferCollectionElementType() potentially modifies expression. Do we need to propagate that?
-                        bool hasErrors = !binder.GetEnumeratorInfoAndInferCollectionElementType(syntax, syntax.Expression, ref expression, isAsync: false, isSpread: true, diagnostics, inferredType: out _, out builder) ||
-                            builder.IsIncomplete;
-                        if (hasErrors)
-                        {
-                            return null;
-                        }
-                        return builder.ElementType;
-                    }
+                    return builder.ElementType;
                 }
                 else
                 {
