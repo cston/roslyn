@@ -22783,6 +22783,43 @@ partial class Program
                 """);
         }
 
+        [Fact]
+        public void Spread_CollectionExpression_03_PROTOTYPE_01()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        byte[] a = b ? [1] : [];
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void Spread_CollectionExpression_03_PROTOTYPE_02()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        byte a = b ? 1 : default;
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics(
+                // (6,18): error CS0266: Cannot implicitly convert type 'int' to 'byte'. An explicit conversion exists (are you missing a cast?)
+                //         byte a = b ? 1 : default;
+                Diagnostic(ErrorCode.ERR_NoImplicitConvCast, "b ? 1 : default").WithArguments("int", "byte").WithLocation(6, 18));
+        }
+
         [ConditionalFact(typeof(DesktopOnly))]
         public void RestrictedTypes()
         {
