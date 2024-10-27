@@ -1010,7 +1010,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // PROTOTYPE: Spec: Does `..default` or `..null` bind successfully, even if they result in NRE at runtime? In short, are we really saying that `..` has a target type?
                 if (expression is BoundUnconvertedCollectionExpression unconvertedCollection)
                 {
-                    expression = ConvertCollectionExpressionElements(unconvertedCollection, elementType, diagnostics);
+                    var collectionType = GetSynthesizedCollectionExpressionCollectionType(expression.Syntax, Compilation, TypeWithAnnotations.Create(elementType), diagnostics); // PROTOTYPE: Ignoring element nullability.
+                    expression = ConvertCollectionExpressionElements(unconvertedCollection, collectionType, diagnostics);
                 }
                 return BindCollectionExpressionSpreadElement((SpreadElementSyntax)element.Syntax, expression, elementType, elementConversion, diagnostics);
             }
@@ -1020,13 +1021,13 @@ namespace Microsoft.CodeAnalysis.CSharp
         // unconverted collection expression, not just the elements.
         private BoundExpression ConvertCollectionExpressionElements(
             BoundUnconvertedCollectionExpression node,
-            TypeSymbol elementType,
+            TypeSymbol collectionType,
             BindingDiagnosticBag diagnostics)
         {
-            Debug.Assert(elementType is { });
+            Debug.Assert(collectionType.IsReadOnlySpan()); // PROTOTYPE: GetSynthesizedCollectionExpressionCollectionType() returns an array if ReadOnlySpan<T> is not available.
 
             var syntax = node.Syntax;
-            var collectionType = GetSynthesizedCollectionExpressionCollectionType(syntax, Compilation, TypeWithAnnotations.Create(elementType), diagnostics); // PROTOTYPE: Ignoring element nullability.
+            var elementType = ((NamedTypeSymbol)collectionType).TypeArgumentsWithAnnotationsNoUseSiteDiagnostics[0].Type;
             var conversion = ConvertCollectionExpressionElementsConversionOnly(node, elementType, diagnostics);
             BoundCollectionExpression collectionExpression;
             if (conversion.Exists)
@@ -1795,13 +1796,8 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             var syntax = node.Syntax;
             var builder = ArrayBuilder<BoundNode>.GetInstance(node.Elements.Length);
-            foreach (var element in node.Elements)
-            {
-                var result = element is BoundExpression expression ?
-                    BindToNaturalType(expression, diagnostics, reportNoTargetType: !targetType.IsErrorType()) :
-                    element;
-                builder.Add(result);
-            }
+            builder.AddRange(node.Elements);
+            BindCollectionExpressionElementsToNaturalType(builder, diagnostics);
             return new BoundCollectionExpression(
                 syntax,
                 collectionTypeKind: CollectionExpressionTypeKind.None,

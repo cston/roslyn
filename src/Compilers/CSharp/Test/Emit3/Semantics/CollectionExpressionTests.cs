@@ -22820,6 +22820,123 @@ partial class Program
                 Diagnostic(ErrorCode.ERR_NoImplicitConvCast, "b ? 1 : default").WithArguments("int", "byte").WithLocation(6, 18));
         }
 
+        [Fact]
+        public void Spread_CollectionExpression_04()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        byte[] b = [1, ..[2, 3]];
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_01()
+        {
+            string source = """
+                using System.Collections.Generic;
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        var c = b ? [1, 2, 3] : new List<object>();
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source);
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_02()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        var c = [1, 2, 3];
+                        c.Report();
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensionsWithSpan],
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[1, 2, 3], "));
+            verifier.VerifyDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_03()
+        {
+            string source = """
+                using System.Collections.Generic;
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        var c = b ? [] : [1, 2, 3];
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_03_PROTOTYPE_01()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        var c = b ? default : (1, 2);
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_03_PROTOTYPE_02()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        (byte, short) c;
+                        c = (1, 2);
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics();
+        }
+
         [ConditionalFact(typeof(DesktopOnly))]
         public void RestrictedTypes()
         {
