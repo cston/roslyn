@@ -5200,7 +5200,9 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 builder.Add(bindElement(element, diagnostics, this, nestingLevel));
             }
-            return new BoundUnconvertedCollectionExpression(syntax, builder.ToImmutableAndFree());
+
+            var collectionType = CalculateCollectionExpressionNaturalType(syntax, builder, diagnostics);
+            return new BoundUnconvertedCollectionExpression(syntax, builder.ToImmutableAndFree(), collectionType);
 
             static BoundNode bindElement(CollectionElementSyntax syntax, BindingDiagnosticBag diagnostics, Binder @this, int nestingLevel)
             {
@@ -5309,25 +5311,17 @@ namespace Microsoft.CodeAnalysis.CSharp
             var builder = ArrayBuilder<BoundNode>.GetInstance(elements.Length);
             builder.AddRange(elements);
 
+            // PROTOTYPE: We don't need this. BoundUnconvertedCollectionExpression already contains elements with natural type.
             BindCollectionExpressionElementsToNaturalType(builder, diagnostics);
 
-            var types = ArrayBuilder<TypeSymbol>.GetInstance();
-            foreach (var element in builder)
-            {
-                types.AddIfNotNull(getInferredElementType(this, element, diagnostics));
-            }
-
             var syntax = expr.Syntax;
-            var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded; // PROTOTYPE: Include use-site diagnostics.
-            var bestType = BestTypeInferrer.GetBestType(types, Conversions, ref useSiteInfo);
-            types.Free();
-
+            var collectionType = CalculateCollectionExpressionNaturalType(syntax, builder, diagnostics);
             BoundExpression result;
-            if (bestType is null)
+            if (collectionType is null)
             {
                 // PROTOTYPE: Should be specific "no best common type" diagnostic.
                 diagnostics.Add(ErrorCode.ERR_CollectionExpressionNoTargetType, syntax.GetLocation());
-                return new BoundCollectionExpression(
+                result = new BoundCollectionExpression(
                     syntax,
                     collectionTypeKind: CollectionExpressionTypeKind.None,
                     placeholder: null,
@@ -5343,12 +5337,31 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
             else
             {
-                var collectionType = GetSynthesizedCollectionExpressionCollectionType(syntax, Compilation, TypeWithAnnotations.Create(bestType), diagnostics); // PROTOTYPE: Ignoring element nullability.
-                expr = expr.Update(builder.ToImmutable()); // PROTOTYPE: We should only update the collection if any of the elements changed, not the array.
+                expr = expr.Update(builder.ToImmutable(), collectionType); // PROTOTYPE: We should only update the collection if any of the elements changed, not the array.
                 result = ConvertCollectionExpressionElements(expr, collectionType, diagnostics);
             }
+
             builder.Free();
             return result;
+        }
+
+        private TypeSymbol? CalculateCollectionExpressionNaturalType(SyntaxNode syntax, ArrayBuilder<BoundNode> builder, BindingDiagnosticBag diagnostics)
+        {
+            var types = ArrayBuilder<TypeSymbol>.GetInstance();
+            foreach (var element in builder)
+            {
+                types.AddIfNotNull(getInferredElementType(this, element, diagnostics));
+            }
+
+            var useSiteInfo = CompoundUseSiteInfo<AssemblySymbol>.Discarded; // PROTOTYPE: Include use-site diagnostics.
+            var bestType = BestTypeInferrer.GetBestType(types, Conversions, ref useSiteInfo);
+            types.Free();
+
+            if (bestType is null)
+            {
+                return null;
+            }
+            return GetSynthesizedCollectionExpressionCollectionType(syntax, Compilation, TypeWithAnnotations.Create(bestType), diagnostics); // PROTOTYPE: Ignoring element nullability.
 
             static TypeSymbol? getInferredElementType(Binder binder, BoundNode element, BindingDiagnosticBag diagnostics)
             {

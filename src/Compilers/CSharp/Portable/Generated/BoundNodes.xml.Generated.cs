@@ -6404,8 +6404,8 @@ namespace Microsoft.CodeAnalysis.CSharp
 
     internal sealed partial class BoundUnconvertedCollectionExpression : BoundCollectionExpressionBase
     {
-        public BoundUnconvertedCollectionExpression(SyntaxNode syntax, ImmutableArray<BoundNode> elements, bool hasErrors = false)
-            : base(BoundKind.UnconvertedCollectionExpression, syntax, elements, null, hasErrors || elements.HasErrors())
+        public BoundUnconvertedCollectionExpression(SyntaxNode syntax, ImmutableArray<BoundNode> elements, TypeSymbol? type, bool hasErrors = false)
+            : base(BoundKind.UnconvertedCollectionExpression, syntax, elements, type, hasErrors || elements.HasErrors())
         {
 
             RoslynDebug.Assert(!elements.IsDefault, "Field 'elements' cannot be null (use Null=\"allow\" in BoundNodes.xml to remove this check)");
@@ -6417,11 +6417,11 @@ namespace Microsoft.CodeAnalysis.CSharp
         [DebuggerStepThrough]
         public override BoundNode? Accept(BoundTreeVisitor visitor) => visitor.VisitUnconvertedCollectionExpression(this);
 
-        public BoundUnconvertedCollectionExpression Update(ImmutableArray<BoundNode> elements)
+        public BoundUnconvertedCollectionExpression Update(ImmutableArray<BoundNode> elements, TypeSymbol? type)
         {
-            if (elements != this.Elements)
+            if (elements != this.Elements || !TypeSymbol.Equals(type, this.Type, TypeCompareKind.ConsiderEverything))
             {
-                var result = new BoundUnconvertedCollectionExpression(this.Syntax, elements, this.HasErrors);
+                var result = new BoundUnconvertedCollectionExpression(this.Syntax, elements, type, this.HasErrors);
                 result.CopyAttributes(this);
                 return result;
             }
@@ -11810,7 +11810,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             ImmutableArray<BoundNode> elements = this.VisitList(node.Elements);
             TypeSymbol? type = this.VisitType(node.Type);
-            return node.Update(elements);
+            return node.Update(elements, type);
         }
         public override BoundNode? VisitCollectionExpression(BoundCollectionExpression node)
         {
@@ -14070,12 +14070,12 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             if (_updatedNullabilities.TryGetValue(node, out (NullabilityInfo Info, TypeSymbol? Type) infoAndType))
             {
-                updatedNode = node.Update(elements);
+                updatedNode = node.Update(elements, infoAndType.Type);
                 updatedNode.TopLevelNullability = infoAndType.Info;
             }
             else
             {
-                updatedNode = node.Update(elements);
+                updatedNode = node.Update(elements, node.Type);
             }
             return updatedNode;
         }

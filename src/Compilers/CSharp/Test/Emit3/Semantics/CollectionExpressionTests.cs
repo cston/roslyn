@@ -22742,43 +22742,64 @@ partial class Program
                 targetFramework: TargetFramework.Net80,
                 verify: Verification.Skipped,
                 expectedOutput: IncludeExpectedOutput("[1, 2], "));
-            verifier.VerifyIL("Program.F",
+            verifier.VerifyIL("Program.F<T>",
                 """
                 {
-                  // Code size       70 (0x46)
-                  .maxstack  2
-                  .locals init (System.ReadOnlySpan<int> V_0,
-                                int V_1,
-                                System.ReadOnlySpan<int> V_2,
-                                int V_3) //i
-                  IL_0000:  ldloca.s   V_0
-                  IL_0002:  ldtoken    "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=8_Align=4 <PrivateImplementationDetails>.0C40FC912BEA3D01B4DBAD07DE4C8CF177AC0C424BC11D622D2239C0E59889864"
-                  IL_0007:  call       "System.ReadOnlySpan<int> System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan<int>(System.RuntimeFieldHandle)"
-                  IL_000c:  stloc.2
-                  IL_000d:  ldloca.s   V_2
-                  IL_000f:  call       "int[] System.ReadOnlySpan<int>.ToArray()"
-                  IL_0014:  call       "System.ReadOnlySpan<int>..ctor(int[])"
-                  IL_0019:  ldc.i4.0
-                  IL_001a:  stloc.1
-                  IL_001b:  br.s       IL_003b
-                  IL_001d:  ldloca.s   V_0
-                  IL_001f:  ldloc.1
-                  IL_0020:  call       "ref readonly int System.ReadOnlySpan<int>.this[int].get"
-                  IL_0025:  ldind.i4
-                  IL_0026:  stloc.3
-                  IL_0027:  ldstr      "{0}, "
-                  IL_002c:  ldloc.3
-                  IL_002d:  box        "int"
-                  IL_0032:  call       "void System.Console.Write(string, object)"
-                  IL_0037:  ldloc.1
-                  IL_0038:  ldc.i4.1
-                  IL_0039:  add
-                  IL_003a:  stloc.1
-                  IL_003b:  ldloc.1
-                  IL_003c:  ldloca.s   V_0
-                  IL_003e:  call       "int System.ReadOnlySpan<int>.Length.get"
-                  IL_0043:  blt.s      IL_001d
-                  IL_0045:  ret
+                  // Code size      102 (0x66)
+                  .maxstack  4
+                  .locals init (T V_0,
+                                T V_1,
+                                System.ReadOnlySpan<T> V_2,
+                                int V_3,
+                                T[] V_4,
+                                System.ReadOnlySpan<T> V_5,
+                                System.Span<T> V_6)
+                  IL_0000:  ldarg.1
+                  IL_0001:  stloc.1
+                  IL_0002:  ldarg.0
+                  IL_0003:  brtrue.s   IL_0011
+                  IL_0005:  ldloca.s   V_5
+                  IL_0007:  initobj    "System.ReadOnlySpan<T>"
+                  IL_000d:  ldloc.s    V_5
+                  IL_000f:  br.s       IL_001a
+                  IL_0011:  ldarg.2
+                  IL_0012:  stloc.0
+                  IL_0013:  ldloca.s   V_0
+                  IL_0015:  newobj     "System.ReadOnlySpan<T>..ctor(ref readonly T)"
+                  IL_001a:  stloc.2
+                  IL_001b:  ldc.i4.0
+                  IL_001c:  stloc.3
+                  IL_001d:  ldc.i4.1
+                  IL_001e:  ldloca.s   V_2
+                  IL_0020:  call       "int System.ReadOnlySpan<T>.Length.get"
+                  IL_0025:  add
+                  IL_0026:  newarr     "T"
+                  IL_002b:  stloc.s    V_4
+                  IL_002d:  ldloc.s    V_4
+                  IL_002f:  ldloc.3
+                  IL_0030:  ldloc.1
+                  IL_0031:  stelem     "T"
+                  IL_0036:  ldloc.3
+                  IL_0037:  ldc.i4.1
+                  IL_0038:  add
+                  IL_0039:  stloc.3
+                  IL_003a:  ldloca.s   V_2
+                  IL_003c:  ldloc.s    V_4
+                  IL_003e:  newobj     "System.Span<T>..ctor(T[])"
+                  IL_0043:  stloc.s    V_6
+                  IL_0045:  ldloca.s   V_6
+                  IL_0047:  ldloc.3
+                  IL_0048:  ldloca.s   V_2
+                  IL_004a:  call       "int System.ReadOnlySpan<T>.Length.get"
+                  IL_004f:  call       "System.Span<T> System.Span<T>.Slice(int, int)"
+                  IL_0054:  call       "void System.ReadOnlySpan<T>.CopyTo(System.Span<T>)"
+                  IL_0059:  ldloc.3
+                  IL_005a:  ldloca.s   V_2
+                  IL_005c:  call       "int System.ReadOnlySpan<T>.Length.get"
+                  IL_0061:  add
+                  IL_0062:  stloc.3
+                  IL_0063:  ldloc.s    V_4
+                  IL_0065:  ret
                 }
                 """);
         }
@@ -22857,7 +22878,7 @@ partial class Program
         }
 
         [Fact]
-        public void NaturalType_CollectionExpression_02()
+        public void NaturalType_CollectionExpression_02A() // PROTOTYPE: Rename and number.
         {
             string source = """
                 class Program
@@ -22880,10 +22901,57 @@ partial class Program
         }
 
         [Fact]
+        public void NaturalType_CollectionExpression_02B()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        var a = new[] { 1, 2, default };
+                        var c = [1, 2, default];
+                        a.Report();
+                        c.Report();
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensionsWithSpan],
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[1, 2, 0], [1, 2, 0], "));
+            verifier.VerifyDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_02C()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        var a = new[] { 1, 2, null };
+                        var c = [1, 2, null];
+                    }
+                }
+                """;
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics(
+                // (5,31): error CS0037: Cannot convert null to 'int' because it is a non-nullable value type
+                //         var a = new[] { 1, 2, null };
+                Diagnostic(ErrorCode.ERR_ValueCantBeNull, "null").WithArguments("int").WithLocation(5, 31),
+                // (6,24): error CS0037: Cannot convert null to 'int' because it is a non-nullable value type
+                //         var c = [1, 2, null];
+                Diagnostic(ErrorCode.ERR_ValueCantBeNull, "null").WithArguments("int").WithLocation(6, 24));
+        }
+
+        [Fact]
         public void NaturalType_CollectionExpression_03()
         {
             string source = """
-                using System.Collections.Generic;
                 class Program
                 {
                     static void Main()
@@ -22922,6 +22990,7 @@ partial class Program
         public void NaturalType_CollectionExpression_03_PROTOTYPE_02()
         {
             string source = """
+                #pragma warning disable 219
                 class Program
                 {
                     static void Main()
@@ -22935,6 +23004,52 @@ partial class Program
             // behavior when {ReadOnly}Span<T> is not available.
             var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
             comp.VerifyEmitDiagnostics();
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_04()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        bool b = true;
+                        var c = b ? [(byte)1, (byte)2] : [3, 4, 5];
+                        var d = b ? [(byte)1, (byte)2] : [-3, 4, 5];
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var comp = CreateCompilation(source, targetFramework: TargetFramework.Net80);
+            comp.VerifyEmitDiagnostics(
+                // (6,17): error CS0172: Type of conditional expression cannot be determined because 'ReadOnlySpan<byte>' and 'ReadOnlySpan<int>' implicitly convert to one another
+                //         var c = b ? [(byte)1, (byte)2] : [3, 4, 5];
+                Diagnostic(ErrorCode.ERR_AmbigQM, "b ? [(byte)1, (byte)2] : [3, 4, 5]").WithArguments("System.ReadOnlySpan<byte>", "System.ReadOnlySpan<int>").WithLocation(6, 17));
+        }
+
+        [Fact]
+        public void NaturalType_CollectionExpression_05()
+        {
+            string source = """
+                class Program
+                {
+                    static void Main()
+                    {
+                        var c = [..[1, 2, 3]];
+                        c.Report();
+                    }
+                }
+                """;
+            // PROTOTYPE: Compile with TargetFramework.NetStandard20 to test
+            // behavior when {ReadOnly}Span<T> is not available.
+            var verifier = CompileAndVerify(
+                [source, s_collectionExtensionsWithSpan],
+                targetFramework: TargetFramework.Net80,
+                verify: Verification.Skipped,
+                expectedOutput: IncludeExpectedOutput("[1, 2, 3], "));
+            verifier.VerifyDiagnostics();
         }
 
         [ConditionalFact(typeof(DesktopOnly))]
