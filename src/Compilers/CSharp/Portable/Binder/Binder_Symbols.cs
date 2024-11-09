@@ -1132,12 +1132,10 @@ namespace Microsoft.CodeAnalysis.CSharp
                 if ((object)type != null)
                 {
                     // pass args in a value tuple to avoid allocating a closure
-                    var args = (this, diagnostics, syntax);
-                    type.VisitType((typePart, argTuple, isNested) =>
-                    {
-                        argTuple.Item1.ReportDiagnosticsIfObsolete(argTuple.diagnostics, typePart, argTuple.syntax, hasBaseReceiver: false);
-                        return false;
-                    }, args);
+                    default(TypeWithAnnotations).VisitType(
+                        type,
+                        (TypeSymbolExtensions.IVisitType_TypeWithAnnotationsPredicate)null,
+                        new ReportDiagnosticsIfObsoleteDelegate(this, diagnostics, syntax));
                 }
 
                 return result;
@@ -1145,6 +1143,15 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             alias = null;
             return symbol;
+        }
+
+        private readonly struct ReportDiagnosticsIfObsoleteDelegate(Binder binder, BindingDiagnosticBag diagnostics, SyntaxNode syntax) : TypeSymbolExtensions.IVisitType_TypePredicate
+        {
+            public bool Invoke(TypeSymbol type, bool isNestedType)
+            {
+                binder.ReportDiagnosticsIfObsolete(diagnostics, type, syntax, hasBaseReceiver: false);
+                return false;
+            }
         }
 
         private TypeWithAnnotations BindGenericSimpleNamespaceOrTypeOrAliasSymbol(

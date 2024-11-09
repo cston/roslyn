@@ -735,6 +735,52 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 visitCustomModifiers: visitCustomModifiers);
         }
 
+        public static TypeSymbol? VisitType<T>(
+            this TypeWithAnnotations typeWithAnnotationsOpt,
+            TypeSymbol? type,
+            Func<TypeWithAnnotations, T, bool, bool>? typeWithAnnotationsPredicate,
+            Func<TypeSymbol, T, bool, bool>? typePredicate,
+            T arg,
+            bool canDigThroughNullable = false,
+            bool useDefaultType = false,
+            bool visitCustomModifiers = false)
+        {
+            return VisitType<Legacy_TypeWithAnnotationsPredicate<T>, Legacy_TypePredicate<T>>(
+                typeWithAnnotationsOpt,
+                type,
+                typeWithAnnotationsPredicate is null ? null : new Legacy_TypeWithAnnotationsPredicate<T>(typeWithAnnotationsPredicate, arg),
+                typePredicate is null ? null : new Legacy_TypePredicate<T>(typePredicate, arg),
+                canDigThroughNullable,
+                useDefaultType,
+                visitCustomModifiers);
+        }
+
+        private sealed class Legacy_TypeWithAnnotationsPredicate<T>(Func<TypeWithAnnotations, T, bool, bool>? typeWithAnnotationsPredicate, T arg) : IVisitType_TypeWithAnnotationsPredicate
+        {
+            public bool Invoke(TypeWithAnnotations type, bool isNestedType)
+            {
+                return typeWithAnnotationsPredicate(type, arg, isNestedType);
+            }
+        }
+
+        private sealed class Legacy_TypePredicate<T>(Func<TypeSymbol, T, bool, bool>? typePredicate, T arg) : IVisitType_TypePredicate
+        {
+            public bool Invoke(TypeSymbol type, bool isNestedType)
+            {
+                return typePredicate(type, arg, isNestedType);
+            }
+        }
+
+        public interface IVisitType_TypeWithAnnotationsPredicate
+        {
+            bool Invoke(TypeWithAnnotations type, bool isNestedType);
+        }
+
+        public interface IVisitType_TypePredicate
+        {
+            bool Invoke(TypeSymbol type, bool isNestedType);
+        }
+
         /// <summary>
         /// Visit the given type and, in the case of compound types, visit all "sub type".
         /// One of the predicates will be invoked at each type. If the type is a
@@ -746,15 +792,19 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         /// </summary>
         /// <param name="useDefaultType">If true, use <see cref="TypeWithAnnotations.DefaultType"/>
         /// instead of <see cref="TypeWithAnnotations.Type"/> to avoid early resolution of nullable types</param>
-        public static TypeSymbol? VisitType<T>(
+        public static TypeSymbol? VisitType<TTypeWithAnnotationsPredicate, TTypePredicate>(
             this TypeWithAnnotations typeWithAnnotationsOpt,
             TypeSymbol? type,
-            Func<TypeWithAnnotations, T, bool, bool>? typeWithAnnotationsPredicate,
-            Func<TypeSymbol, T, bool, bool>? typePredicate,
-            T arg,
+            TTypeWithAnnotationsPredicate? typeWithAnnotationsPredicate,
+            TTypePredicate? typePredicate,
             bool canDigThroughNullable = false,
             bool useDefaultType = false,
             bool visitCustomModifiers = false)
+            where TTypeWithAnnotationsPredicate : IVisitType_TypeWithAnnotationsPredicate
+            where TTypePredicate : IVisitType_TypePredicate
+//#if NET9_0_OR_GREATER
+//            , allows ref struct
+//#endif
         {
             RoslynDebug.Assert(typeWithAnnotationsOpt.HasType == (type is null));
             RoslynDebug.Assert(canDigThroughNullable == false || useDefaultType == false, "digging through nullable will cause early resolution of nullable types");
@@ -783,7 +833,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                             if ((object)containingType != null)
                             {
                                 isNestedNamedType = true;
-                                var result = VisitType(default, containingType, typeWithAnnotationsPredicate, typePredicate, arg, canDigThroughNullable, useDefaultType, visitCustomModifiers);
+                                var result = VisitType(default, containingType, typeWithAnnotationsPredicate, typePredicate, canDigThroughNullable, useDefaultType, visitCustomModifiers);
                                 if (result is object)
                                 {
                                     return result;
@@ -799,14 +849,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                 if (typeWithAnnotationsOpt.HasType && typeWithAnnotationsPredicate != null)
                 {
-                    if (typeWithAnnotationsPredicate(typeWithAnnotationsOpt, arg, isNestedNamedType))
+                    if (typeWithAnnotationsPredicate.Invoke(typeWithAnnotationsOpt, isNestedNamedType))
                     {
                         return current;
                     }
                 }
                 else if (typePredicate != null)
                 {
-                    if (typePredicate(current, arg, isNestedNamedType))
+                    if (typePredicate.Invoke(current, isNestedNamedType))
                     {
                         return current;
                     }
@@ -818,7 +868,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     {
                         var result = VisitType(
                             typeWithAnnotationsOpt: default, type: ((CSharpCustomModifier)customModifier).ModifierSymbol,
-                            typeWithAnnotationsPredicate, typePredicate, arg,
+                            typeWithAnnotationsPredicate, typePredicate,
                             canDigThroughNullable, useDefaultType, visitCustomModifiers);
                         if (result is object)
                         {
@@ -872,7 +922,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                                     type: nextType,
                                     typeWithAnnotationsPredicate,
                                     typePredicate,
-                                    arg,
                                     canDigThroughNullable,
                                     useDefaultType,
                                     visitCustomModifiers);
@@ -903,7 +952,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                                     type: nextType,
                                     typeWithAnnotationsPredicate,
                                     typePredicate,
-                                    arg,
                                     canDigThroughNullable,
                                     useDefaultType,
                                     visitCustomModifiers);
@@ -928,7 +976,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                     case TypeKind.FunctionPointer:
                         {
-                            var result = visitFunctionPointerType((FunctionPointerTypeSymbol)current, typeWithAnnotationsPredicate, typePredicate, arg, useDefaultType, canDigThroughNullable, visitCustomModifiers, out next);
+                            var result = visitFunctionPointerType((FunctionPointerTypeSymbol)current, typeWithAnnotationsPredicate, typePredicate, useDefaultType, canDigThroughNullable, visitCustomModifiers, out next);
                             if (result is object)
                             {
                                 return result;
@@ -949,7 +997,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             static (TypeWithAnnotations, TypeSymbol?) getNextIterationElements(TypeWithAnnotations type, bool canDigThroughNullable)
                 => canDigThroughNullable ? (default(TypeWithAnnotations), type.NullableUnderlyingTypeOrSelf) : (type, null);
 
-            static TypeSymbol? visitFunctionPointerType(FunctionPointerTypeSymbol type, Func<TypeWithAnnotations, T, bool, bool>? typeWithAnnotationsPredicate, Func<TypeSymbol, T, bool, bool>? typePredicate, T arg, bool useDefaultType, bool canDigThroughNullable, bool visitCustomModifiers, out TypeWithAnnotations next)
+            static TypeSymbol? visitFunctionPointerType(FunctionPointerTypeSymbol type, TTypeWithAnnotationsPredicate? typeWithAnnotationsPredicate, TTypePredicate? typePredicate, bool useDefaultType, bool canDigThroughNullable, bool visitCustomModifiers, out TypeWithAnnotations next)
             {
                 MethodSymbol currentPointer = type.Signature;
                 if (currentPointer.ParameterCount == 0)
@@ -963,7 +1011,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     type: canDigThroughNullable ? currentPointer.ReturnTypeWithAnnotations.NullableUnderlyingTypeOrSelf : null,
                     typeWithAnnotationsPredicate,
                     typePredicate,
-                    arg,
                     canDigThroughNullable,
                     useDefaultType,
                     visitCustomModifiers);
@@ -982,7 +1029,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         type: nextType,
                         typeWithAnnotationsPredicate,
                         typePredicate,
-                        arg,
                         canDigThroughNullable,
                         useDefaultType,
                         visitCustomModifiers);
