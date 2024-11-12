@@ -1713,7 +1713,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// </summary>
         public static TypeSyntax ParseTypeName(string text, int offset = 0, ParseOptions? options = null, bool consumeFullText = true)
         {
-            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options)) // PROTOTYPE: Test with options.IsInFieldKeywordContext.
             using (var parser = MakeParser(lexer))
             {
                 var node = parser.ParseTypeName();
@@ -1732,14 +1732,28 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// <param name="consumeFullText">True if extra tokens in the input should be treated as an error</param>
         public static ExpressionSyntax ParseExpression(string text, int offset = 0, ParseOptions? options = null, bool consumeFullText = true)
         {
-            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+            var parseOptions = (CSharpParseOptions?)options;
+            using (var lexer = MakeLexer(text, offset, parseOptions))
             using (var parser = MakeParser(lexer))
             {
+                using var _ = new InternalSyntax.LanguageParser.FieldKeywordContext(parser, parseOptions?.InFieldKeywordContext == true);
                 var node = parser.ParseExpression();
                 if (consumeFullText) node = parser.ConsumeUnexpectedTokens(node);
                 return (ExpressionSyntax)node.CreateRed();
             }
         }
+
+        //private static SyntaxNode Parse<TNode>(string text, int offset, ParseOptions? options, bool consumeFullText, Func<LanguageParser, TNode> parse)
+        //    where TNode : InternalSyntax.CSharpSyntaxNode
+        //{
+        //    using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+        //    using (var parser = MakeParser(lexer))
+        //    {
+        //        var node = parse(parser);
+        //        if (consumeFullText) node = parser.ConsumeUnexpectedTokens(node);
+        //        return node.CreateRed();
+        //    }
+        //}
 
         /// <summary>
         /// Parse a StatementSyntaxNode using grammar rule for statements.
@@ -1751,7 +1765,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// <param name="consumeFullText">True if extra tokens in the input should be treated as an error</param>
         public static StatementSyntax ParseStatement(string text, int offset = 0, ParseOptions? options = null, bool consumeFullText = true)
         {
-            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options)) // PROTOTYPE: Test with options.IsInFieldKeywordContext.
             using (var parser = MakeParser(lexer))
             {
                 var node = parser.ParseStatement();
@@ -1852,7 +1866,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// <param name="consumeFullText">True if extra tokens in the input should be treated as an error</param>
         public static ArgumentListSyntax ParseArgumentList(string text, int offset = 0, ParseOptions? options = null, bool consumeFullText = true)
         {
-            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options)) // PROTOTYPE: Test with options.IsInFieldKeywordContext.
             using (var parser = MakeParser(lexer))
             {
                 var node = parser.ParseParenthesizedArgumentList();
@@ -1871,7 +1885,7 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// <param name="consumeFullText">True if extra tokens in the input should be treated as an error</param>
         public static BracketedArgumentListSyntax ParseBracketedArgumentList(string text, int offset = 0, ParseOptions? options = null, bool consumeFullText = true)
         {
-            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options))
+            using (var lexer = MakeLexer(text, offset, (CSharpParseOptions?)options)) // PROTOTYPE: Test with options.IsInFieldKeywordContext.
             using (var parser = MakeParser(lexer))
             {
                 var node = parser.ParseBracketedArgumentList();

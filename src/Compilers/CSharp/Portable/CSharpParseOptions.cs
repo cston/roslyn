@@ -37,6 +37,8 @@ namespace Microsoft.CodeAnalysis.CSharp
         /// </summary>
         public LanguageVersion SpecifiedLanguageVersion { get; private set; }
 
+        public bool InFieldKeywordContext { get; private init; }
+
         internal ImmutableArray<string> PreprocessorSymbols { get; private set; }
 
         /// <summary>
@@ -140,6 +142,16 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             return new CSharpParseOptions(this) { DocumentationMode = documentationMode };
+        }
+
+        public CSharpParseOptions WithInFieldKeywordContext(bool inFieldKeywordContext)
+        {
+            if (inFieldKeywordContext == this.InFieldKeywordContext)
+            {
+                return this;
+            }
+
+            return new CSharpParseOptions(this) { InFieldKeywordContext = inFieldKeywordContext };
         }
 
         public override ParseOptions CommonWithKind(SourceCodeKind kind)

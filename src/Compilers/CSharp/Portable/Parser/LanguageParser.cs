@@ -4067,7 +4067,7 @@ parse_member_name:;
                 semicolon);
         }
 
-        private readonly ref struct FieldKeywordContext : IDisposable
+        internal readonly ref struct FieldKeywordContext : IDisposable
         {
             private readonly LanguageParser _parser;
             private readonly bool _previousInFieldKeywordContext;

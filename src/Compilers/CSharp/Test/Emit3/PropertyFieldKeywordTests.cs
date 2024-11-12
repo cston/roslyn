@@ -2842,7 +2842,6 @@ struct S2
                 //     public S2 P { get => field; }
                 Diagnostic(ErrorCode.ERR_StructLayoutCycle, "P").WithArguments(bindS1First ? "S1.P" : "S2.P", bindS1First ? "S2" : "S1").WithLocation(5, 15));
 
-
             comp.GetDiagnosticsForSyntaxTree(CompilationStage.Compile, bindS1First ? comp.SyntaxTrees[1] : comp.SyntaxTrees[0], filterSpanWithinTree: null, includeEarlierStages: true).Verify(
                 // (5,15): error CS0523: Struct member 'S2.P' of type 'S1' causes a cycle in the struct layout
                 //     public S1 P { get => field; }
@@ -3899,13 +3898,13 @@ class C
             {
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
                 Assert.Equal("System.Double field", fieldKeywordSymbolInfo.Symbol.ToTestDisplayString(includeNonNullable: true));
-                    Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
+                Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             }
             else
             {
                 Assert.Equal(FieldBindingTestState.BecomesBackingField, bindingState);
                 Assert.Equal("System.Double C.<P>k__BackingField", fieldKeywordSymbolInfo.Symbol.ToTestDisplayString(includeNonNullable: true));
-                    Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
+                Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
             }
         }
 
@@ -3971,22 +3970,22 @@ class C
 
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
-                }
+            }
             else
             {
                 Assert.Equal(FieldBindingTestState.BecomesBackingField, bindingState);
-                }
+            }
 
             Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
                 Assert.Equal("System.Int32 field", fieldKeywordSymbolInfo.Symbol.GetSymbol().ToTestDisplayString());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
-                }
+            }
             else
             {
                 Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-                }
+            }
         }
 
         [Theory]
@@ -4079,7 +4078,6 @@ class C
             Assert.Null(aliasInfoAsExpression);
             Assert.Null(aliasInfoAsType);
 
-
             if (bindingState == FieldBindingTestState.BecomesBackingField)
             {
                 Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
@@ -4161,18 +4159,18 @@ class C
             {
                 Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
-                }
+            }
             else if (bindingState == FieldBindingTestState.BecomesBackingField)
             {
                 Assert.Equal("System.Double C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
                 Assert.Same(comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single(), fieldKeywordSymbolInfo.Symbol.GetSymbol());
-                }
+            }
             else
             {
                 Assert.Equal(FieldBindingTestState.None, bindingState);
                 Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Null(fieldKeywordSymbolInfo.Symbol);
-                }
+            }
         }
 
         [Theory]
@@ -4258,17 +4256,17 @@ class C
         }
 
         [Theory]
-        [InlineData("get => 0; get => 1;", 0, FieldBindingTestState.None, 0)]
-        [InlineData("get => 0; get => 1;", 1, FieldBindingTestState.None, 0)]
-        [InlineData("get { return 0; } get => 1;", 0, FieldBindingTestState.None, 0)]
-        [InlineData("get { return 0; } get => 1;", 1, FieldBindingTestState.None, 0)]
-        [InlineData("get => 0; get { return 1; }", 0, FieldBindingTestState.None, 0)]
-        [InlineData("get => 0; get { return 1; }", 1, FieldBindingTestState.None, 0)]
-        [InlineData("get { return 0; } get { return 1; }", 0, FieldBindingTestState.None, 0)]
-        [InlineData("get { return 0; } get { return 1; }", 1, FieldBindingTestState.None, 0)]
-        [InlineData("get { int field = 0; return field; } get { return 1; }", 0, FieldBindingTestState.BecomesLocal, 1)]
-        [InlineData("get { int field = 0; return field; } get { return 1; }", 1, FieldBindingTestState.None, 1)]
-        public void SpeculativeSemanticModel_TwoGettersNotUsingFieldKeyword_BindSpeculatedFirst(string accessors, int numericLiteralToSpeculate, FieldBindingTestState bindingState, int numberOfAccessorBinding)
+        [InlineData("get => 0; get => 1;", 0, FieldBindingTestState.None)]
+        [InlineData("get => 0; get => 1;", 1, FieldBindingTestState.None)]
+        [InlineData("get { return 0; } get => 1;", 0, FieldBindingTestState.None)]
+        [InlineData("get { return 0; } get => 1;", 1, FieldBindingTestState.None)]
+        [InlineData("get => 0; get { return 1; }", 0, FieldBindingTestState.None)]
+        [InlineData("get => 0; get { return 1; }", 1, FieldBindingTestState.None)]
+        [InlineData("get { return 0; } get { return 1; }", 0, FieldBindingTestState.None)]
+        [InlineData("get { return 0; } get { return 1; }", 1, FieldBindingTestState.None)]
+        [InlineData("get { int field = 0; return field; } get { return 1; }", 0, FieldBindingTestState.BecomesLocal)]
+        [InlineData("get { int field = 0; return field; } get { return 1; }", 1, FieldBindingTestState.None)]
+        public void SpeculativeSemanticModel_TwoGettersNotUsingFieldKeyword_BindSpeculatedFirst(string accessors, int numericLiteralToSpeculate, FieldBindingTestState bindingState)
         {
             var comp = CreateCompilation($@"
 class C
@@ -4319,7 +4317,7 @@ class C
 
             if (bindingState == FieldBindingTestState.BecomesLocal)
             {
-                    Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
+                Assert.Empty(comp.GetTypeByMetadataName("C").GetFieldsToEmit());
                 Assert.Equal("System.Int32 field", fieldKeywordSymbolInfo.Symbol.GetSymbol().ToTestDisplayString());
                 Assert.Equal(SymbolKind.Local, fieldKeywordSymbolInfo.Symbol.Kind);
             }
@@ -4816,10 +4814,10 @@ public class MyAttribute : System.Attribute
 
             var newAttributeSyntax = SyntaxFactory.Attribute(
                 attributeSyntax.Name,
-                SyntaxFactory.AttributeArgumentList(SyntaxFactory.SeparatedList<AttributeArgumentSyntax>().Add(SyntaxFactory.AttributeArgument(SyntaxFactory.ParseExpression("nameof(field)")))));
+                SyntaxFactory.AttributeArgumentList(SyntaxFactory.SeparatedList<AttributeArgumentSyntax>().Add(SyntaxFactory.AttributeArgument(
+                    SyntaxFactory.ParseExpression("nameof(field)", options: TestOptions.RegularPreview.WithInFieldKeywordContext(true))))));
 
-            var fieldNode = (IdentifierNameSyntax)((InvocationExpressionSyntax)newAttributeSyntax.ArgumentList.Arguments[0].Expression).ArgumentList.Arguments[0].Expression;
-            Assert.Equal(SyntaxKind.FieldKeyword, fieldNode.Identifier.ContextualKind());
+            var fieldNode = (FieldExpressionSyntax)((InvocationExpressionSyntax)newAttributeSyntax.ArgumentList.Arguments[0].Expression).ArgumentList.Arguments[0].Expression;
             model.TryGetSpeculativeSemanticModel(attributeSyntax.SpanStart, newAttributeSyntax, out var speculativeModel);
 
             Assert.Equal("System.Int32 C.<P>k__BackingField", comp.GetTypeByMetadataName("C").GetFieldsToEmit().Single().ToTestDisplayString());
