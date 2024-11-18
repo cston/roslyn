@@ -444,6 +444,19 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
             }
         }
 
+        // PROTOTYPE: Test error is only reported in expected accessor context.
+        // PROTOTYPE: Test error is reported for the following, when named field, and not reported when named @field.
+        // - local
+        // - local function
+        // - lambda implicitly-typed parameter
+        // - lambda explicitly-typed parameter
+        // - local function parameter
+        // - implicit parameter in LINQ expression
+        // - let variable in LINQ expression
+        // - out var
+        // - deconstruction var
+        // - other variable declaration locations: catch, for, foreach, ...
+
         [Theory]
         [CombinatorialData]
         public void IdentifierToken_LocalFunctionStatementSyntax(
@@ -458,7 +471,17 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
                 }
                 """;
             var comp = CreateCompilation(source, parseOptions: TestOptions.Regular.WithLanguageVersion(languageVersion));
-            comp.VerifyEmitDiagnostics();
+            if (languageVersion > LanguageVersion.CSharp13)
+            {
+                comp.VerifyEmitDiagnostics(
+                    // (4,23): error CS9268: In language version preview, the 'field' keyword binds to a synthesized backing field for the property. Unescaped references to 'field' within the scope of this variable will refer to the property backing field rather than the variable.
+                    //     object P1 { get { object field() => null; return null; } }
+                    Diagnostic(ErrorCode.ERR_VariableDeclarationNamedField, "object field() => null;").WithArguments("preview").WithLocation(4, 23));
+            }
+            else
+            {
+                comp.VerifyEmitDiagnostics();
+            }
         }
 
         [Theory]

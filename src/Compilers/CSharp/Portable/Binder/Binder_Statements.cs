@@ -555,6 +555,8 @@ namespace Microsoft.CodeAnalysis.CSharp
         {
             MessageID.IDS_FeatureLocalFunctions.CheckFeatureAvailability(diagnostics, node.Identifier);
 
+            ReportFieldContextualKeywordConflictIfAny(node, node.Identifier, diagnostics);
+
             // already defined symbol in containing block
             var localSymbol = this.LookupLocalFunction(node.Identifier);
 

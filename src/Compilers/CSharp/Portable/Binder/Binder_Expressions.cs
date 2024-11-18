@@ -1488,6 +1488,20 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        internal void ReportFieldContextualKeywordConflictIfAny(SyntaxNode syntax, SyntaxToken identifier, BindingDiagnosticBag diagnostics)
+        {
+            string name = identifier.Text;
+            if (name == "field" &&
+                ContainingMember() is MethodSymbol { MethodKind: MethodKind.PropertyGet or MethodKind.PropertySet, AssociatedSymbol: PropertySymbol { IsIndexer: false } })
+            {
+                var requiredVersion = MessageID.IDS_FeatureFieldKeyword.RequiredVersion();
+                if (Compilation.LanguageVersion >= requiredVersion)
+                {
+                    diagnostics.Add(ErrorCode.ERR_VariableDeclarationNamedField, syntax, requiredVersion.ToDisplayString());
+                }
+            }
+        }
+
         /// <returns>true if managed type-related errors were found, otherwise false.</returns>
         internal static bool CheckManagedAddr(CSharpCompilation compilation, TypeSymbol type, Location location, BindingDiagnosticBag diagnostics, bool errorForManaged = false)
         {
