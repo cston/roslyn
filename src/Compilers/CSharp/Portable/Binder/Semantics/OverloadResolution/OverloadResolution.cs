@@ -2983,12 +2983,12 @@ outerDefault:
                     // If the expression is of an array type, prefer ReadOnlySpan over Span (to avoid ArrayTypeMismatchExceptions).
                     if (node.Type is ArrayTypeSymbol)
                     {
-                        if (t1.IsReadOnlySpan() && t2.IsSpan())
+                        if (t1.IsReadOnlySpan() && t2.IsSpan()) // PROTOTYPE: Remove.
                         {
                             return BetterResult.Left;
                         }
 
-                        if (t1.IsSpan() && t2.IsReadOnlySpan())
+                        if (t1.IsSpan() && t2.IsReadOnlySpan()) // PROTOTYPE: Remove.
                         {
                             return BetterResult.Right;
                         }

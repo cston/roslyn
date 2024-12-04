@@ -9013,4 +9013,81 @@ public class FirstClassSpanTests : CSharpTestBase
         var comp = CreateCompilationWithSpanAndMemoryExtensions(source).VerifyDiagnostics();
         AssertEx.Equal("C.M1<System.Object>", DisplayInvokedMethodTypeArguments(comp));
     }
+
+    [Theory]
+    [MemberData(nameof(LangVersions))]
+    public void PROTOTYPE_01_ReadOnlySpan_ReadOnlySpan(LanguageVersion langVersion)
+    {
+        var source = """
+            using System;
+            class Program
+            {
+                static void Main()
+                {
+                    string[] s = new string[0];
+                    F(s);
+                }
+                static void F(ReadOnlySpan<object> s) { Console.WriteLine("ReadOnlySpan<object>"); }
+                static void F(ReadOnlySpan<string> s) { Console.WriteLine("ReadOnlySpan<string>"); }
+            }
+            """;
+        var comp = CreateCompilationWithSpanAndMemoryExtensions(
+            source,
+            parseOptions: TestOptions.Regular.WithLanguageVersion(langVersion),
+            options: TestOptions.ReleaseExe);
+        if (langVersion == LanguageVersion.CSharp13)
+        {
+            comp.VerifyDiagnostics(
+                // (7,9): error CS0121: The call is ambiguous between the following methods or properties: 'Program.F(ReadOnlySpan<object>)' and 'Program.F(ReadOnlySpan<string>)'
+                //         F(s);
+                Diagnostic(ErrorCode.ERR_AmbigCall, "F").WithArguments("Program.F(System.ReadOnlySpan<object>)", "Program.F(System.ReadOnlySpan<string>)").WithLocation(7, 9));
+        }
+        else
+        {
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "ReadOnlySpan<string>");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(LangVersions))]
+    public void PROTOTYPE_02_ReadOnlySpan_Span(LanguageVersion langVersion)
+    {
+        var source = """
+            using System;
+            class Program
+            {
+                static void Main()
+                {
+                    string[] s = new string[0];
+                    F(s);
+                }
+                static void F(ReadOnlySpan<object> s) { Console.WriteLine("ReadOnlySpan<object>"); }
+                static void F(Span<string> s) { Console.WriteLine("Span<string>"); }
+            }
+            """;
+        var comp = CreateCompilationWithSpanAndMemoryExtensions(
+            source,
+            parseOptions: TestOptions.Regular.WithLanguageVersion(langVersion),
+            options: TestOptions.ReleaseExe);
+        if (langVersion == LanguageVersion.CSharp13)
+        {
+            comp.VerifyDiagnostics(
+                // (7,9): error CS0121: The call is ambiguous between the following methods or properties: 'Program.F(ReadOnlySpan<object>)' and 'Program.F(Span<string>)'
+                //         F(s);
+                Diagnostic(ErrorCode.ERR_AmbigCall, "F").WithArguments("Program.F(System.ReadOnlySpan<object>)", "Program.F(System.Span<string>)").WithLocation(7, 9));
+        }
+        else
+        {
+            comp.VerifyEmitDiagnostics();
+            CompileAndVerify(comp, expectedOutput: "ReadOnlySpan<object>");
+        }
+    }
+
+    // PROTOTYPE: Test ReadOnlySpan<string> and Span<string>.
+    // PROTOTYPE: Test reverse order in overload declarations, for all of the above.
+    // PROTOTYPE: Test identity conversions between element types: dynamic vs. object; nullable; tuple element names; etc.
+
+    // PROTOTYPE: Does the new rule apply to only better conversion from expression or
+    // is the rule embedded in better conversion target (and potentially just tied to types)?
 }
