@@ -57,6 +57,7 @@ namespace Microsoft.CodeAnalysis
         /// <summary>
         /// Display `System.[U]IntPtr` instead of `n[u]int`.
         /// </summary>
+        [Obsolete(message: "Unset SymbolDisplayMiscellaneousOptions.UseSpecialTypes instead", error: true)]
         UseNativeIntegerUnderlyingType = 1 << 6,
 
         /// <summary>
