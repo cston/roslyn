@@ -6380,6 +6380,55 @@ class C : TestBase
 
         #endregion Regression Tests
 
+        [Theory]
+        [CombinatorialData]
+        public void NamedAndOptionalArguments(bool preferInterpretation)
+        {
+            string value = preferInterpretation ? "true" : "false";
+            string sourceA = """
+                #nullable enable
+
+                using System.Collections.Generic;
+                using System.Linq;
+
+                namespace System
+                {
+                    public static class MemoryExtensions
+                    {
+                        public static bool Contains<T>(this T[] array, T value, IEqualityComparer<T>? comparer = null)
+                        {
+                            return Enumerable.Contains(array, value);
+                        }
+                    }
+                }
+                """;
+            string sourceB = $$"""
+                using System;
+                using System.Linq.Expressions;
+
+                Expression<Func<int?[], int, bool>> e;
+
+                e = (a, i) => a.Contains(i); // error CS0854: expression tree may not contain a call that uses optional arguments
+                var f1 = e.Compile(preferInterpretation: {{value}});
+                e = (a, i) => a.Contains(comparer: null, value: i); // error CS0853: expression tree may not contain a named argument specification
+                var f2 = e.Compile(preferInterpretation: {{value}});
+
+                Console.WriteLine(f1([1, 3], 2));
+                Console.WriteLine(f1([1, 2, 3], 2));
+                Console.WriteLine(f2([1, 3], 2));
+                Console.WriteLine(f2([1, 2, 3], 2));
+                """;
+            var verifier = CompileAndVerify(
+                [sourceA, sourceB],
+                expectedOutput: """
+                    False
+                    True
+                    False
+                    True
+                    """);
+            verifier.VerifyDiagnostics();
+        }
+
         #region helpers
 
         private static string TrimExpectedOutput(string expectedOutput)

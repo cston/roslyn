@@ -328,14 +328,6 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     Error(ErrorCode.ERR_ExpressionTreeContainsIndexedProperty, node);
                 }
-                else if (hasDefaultArgument(arguments, defaultArguments))
-                {
-                    Error(ErrorCode.ERR_ExpressionTreeContainsOptionalArgument, node);
-                }
-                else if (!argumentNamesOpt.IsDefaultOrEmpty)
-                {
-                    Error(ErrorCode.ERR_ExpressionTreeContainsNamedArgument, node);
-                }
                 else if (IsComCallWithRefOmitted(method, arguments, argumentRefKindsOpt))
                 {
                     Error(ErrorCode.ERR_ComRefCallInExpressionTree, node);
@@ -352,19 +344,6 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     Error(ErrorCode.ERR_ExpressionTreeContainsAbstractStaticMemberAccess, node);
                 }
-            }
-
-            static bool hasDefaultArgument(ImmutableArray<BoundExpression> arguments, BitVector defaultArguments)
-            {
-                for (int i = 0; i < arguments.Length; i++)
-                {
-                    if (defaultArguments[i])
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
             }
         }
 
