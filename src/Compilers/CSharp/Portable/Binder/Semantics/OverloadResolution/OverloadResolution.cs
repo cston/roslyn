@@ -181,6 +181,43 @@ namespace Microsoft.CodeAnalysis.CSharp
             typeArguments.Free();
         }
 
+        internal void CollectionBuilderMethodOverloadResolution(
+            ArrayBuilder<MethodSymbol> methods,
+            ArrayBuilder<TypeWithAnnotations> typeArguments,
+            AnalyzedArguments arguments,
+            OverloadResolutionResult<MethodSymbol> result,
+            ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        {
+            var results = result.ResultsBuilder;
+            var options = Options.None;
+
+            // Replaces call to PerformMemberOverloadResolutionStart().
+            foreach (var method in methods)
+            {
+                if (arguments.Names is { Count: > 0 } namesBuilder)
+                {
+                    namesBuilder[^1] = (method.Parameters[^1].Name, null);
+                }
+                AddMemberToCandidateSet(
+                    method,
+                    results,
+                    methods,
+                    typeArguments,
+                    arguments,
+                    completeResults: false,
+                    containingTypeMapOpt: null,
+                    useSiteInfo: ref useSiteInfo,
+                    options,
+                    checkOverriddenOrHidden: false);
+            }
+
+            // PROTOTYPE: Split the AddMemberToCandidateSet() loop out of PerformMemberOverloadResolutionStart()
+            // instead of duplicating it here.
+            RemoveInaccessibleTypeArguments(results, ref useSiteInfo);
+
+            PerformMemberOverloadResolutionContinued(results, receiver: null, isExtensionMethodInvocation: false, arguments.Arguments, returnRefKind: RefKind.None, returnType: null, callingConventionInfo: default, ref useSiteInfo, options);
+        }
+
         internal void MethodOrPropertyOverloadResolution<TMember>(
             ArrayBuilder<TMember> members,
             ArrayBuilder<TypeWithAnnotations> typeArguments,
@@ -444,9 +481,24 @@ namespace Microsoft.CodeAnalysis.CSharp
 
             PerformMemberOverloadResolutionStart(results, members, typeArguments, arguments, completeResults, ref useSiteInfo, options, checkOverriddenOrHidden);
 
+            PerformMemberOverloadResolutionContinued(results, receiver, arguments.IsExtensionMethodInvocation, arguments.Arguments, returnRefKind, returnType, callingConventionInfo, ref useSiteInfo, options);
+        }
+
+        private void PerformMemberOverloadResolutionContinued<TMember>(
+            ArrayBuilder<MemberResolutionResult<TMember>> results,
+            BoundExpression receiver,
+            bool isExtensionMethodInvocation,
+            ArrayBuilder<BoundExpression> arguments,
+            RefKind returnRefKind,
+            TypeSymbol returnType,
+            in CallingConventionInfo callingConventionInfo,
+            ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo,
+            Options options)
+            where TMember : Symbol
+        {
             if (Compilation.LanguageVersion.AllowImprovedOverloadCandidates())
             {
-                RemoveStaticInstanceMismatches(results, arguments, receiver);
+                RemoveStaticInstanceMismatches(results, isExtensionMethodInvocation, receiver);
 
                 RemoveConstraintViolations(results, template: new CompoundUseSiteInfo<AssemblySymbol>(useSiteInfo));
 
@@ -578,7 +630,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         private void RemoveStaticInstanceMismatches<TMember>(
             ArrayBuilder<MemberResolutionResult<TMember>> results,
-            AnalyzedArguments arguments,
+            bool isExtensionMethodInvocation,
             BoundExpression receiverOpt) where TMember : Symbol
         {
             // When the feature 'ImprovedOverloadCandidates' is enabled, we do not include instance members when the receiver
@@ -586,7 +638,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             // because extension methods are only considered when the receiver is an instance. It also does not apply when the
             // receiver is a TypeOrValueExpression, which is used to handle the receiver of a Color-Color ambiguity, where either
             // an instance or a static member would be acceptable.
-            if (arguments.IsExtensionMethodInvocation || Binder.IsTypeOrValueExpression(receiverOpt))
+            if (isExtensionMethodInvocation || Binder.IsTypeOrValueExpression(receiverOpt))
             {
                 return;
             }
@@ -1765,7 +1817,7 @@ outerDefault:
                 // The best method of the set of candidate methods is identified. If a single best
                 // method cannot be identified, the method invocation is ambiguous, and a binding-time
                 // error occurs. 
-                RemoveWorseMembers(results, arguments, ref useSiteInfo);
+                RemoveWorseMembers(results, arguments.Arguments, ref useSiteInfo);
             }
 
             return;
@@ -1780,7 +1832,7 @@ outerDefault:
             }
         }
 
-        private int GetTheBestCandidateIndex<TMember>(ArrayBuilder<MemberResolutionResult<TMember>> results, AnalyzedArguments arguments, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        private int GetTheBestCandidateIndex<TMember>(ArrayBuilder<MemberResolutionResult<TMember>> results, ArrayBuilder<BoundExpression> arguments, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
             where TMember : Symbol
         {
             int currentBestIndex = -1;
@@ -1802,7 +1854,7 @@ outerDefault:
                 }
                 else
                 {
-                    var better = BetterFunctionMember(results[currentBestIndex], results[index], arguments.Arguments, ref useSiteInfo);
+                    var better = BetterFunctionMember(results[currentBestIndex], results[index], arguments, ref useSiteInfo);
                     if (better == BetterResult.Right)
                     {
                         // The current best is worse
@@ -1829,7 +1881,7 @@ outerDefault:
                     return -1;
                 }
 
-                var better = BetterFunctionMember(results[currentBestIndex], results[index], arguments.Arguments, ref useSiteInfo);
+                var better = BetterFunctionMember(results[currentBestIndex], results[index], arguments, ref useSiteInfo);
                 if (better != BetterResult.Left)
                 {
                     // The current best is not better
@@ -1928,7 +1980,7 @@ outerDefault:
             inapplicableMembers.Free();
         }
 
-        private void RemoveWorseMembers<TMember>(ArrayBuilder<MemberResolutionResult<TMember>> results, AnalyzedArguments arguments, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
+        private void RemoveWorseMembers<TMember>(ArrayBuilder<MemberResolutionResult<TMember>> results, ArrayBuilder<BoundExpression> arguments, ref CompoundUseSiteInfo<AssemblySymbol> useSiteInfo)
             where TMember : Symbol
         {
             // SPEC: Given the set of applicable candidate function members, the best function member in
@@ -2000,7 +2052,7 @@ outerDefault:
                         continue;
                     }
 
-                    var better = BetterFunctionMember(c1Result, c2Result, arguments.Arguments, ref useSiteInfo);
+                    var better = BetterFunctionMember(c1Result, c2Result, arguments, ref useSiteInfo);
                     if (better == BetterResult.Left)
                     {
                         worse[c2Idx] = worseThanSomething;
@@ -2040,7 +2092,7 @@ outerDefault:
                     if (worse[i] == worseThanSomething)
                     {
                         // Mark those candidates, that are worse than the single notBest candidate, as Worst in order to improve error reporting.
-                        results[i] = BetterResult.Left == BetterFunctionMember(results[notBestIdx], results[i], arguments.Arguments, ref useSiteInfo)
+                        results[i] = BetterResult.Left == BetterFunctionMember(results[notBestIdx], results[i], arguments, ref useSiteInfo)
                             ? results[i].Worst() : results[i].Worse();
                     }
                     else

@@ -1312,9 +1312,46 @@ namespace Microsoft.CodeAnalysis.CSharp
             BindingDiagnosticBag diagnostics)
         {
             var analyzedArguments = AnalyzedArguments.GetInstance();
-            analyzedArguments.Arguments.Add(spanArgument);
             withElement?.AddToArguments(analyzedArguments);
-            var collectionCreation = BindMethodGroupInvocation(
+            analyzedArguments.Arguments.Add(spanArgument);
+            if (analyzedArguments.Names.Count == 0)
+            {
+                analyzedArguments.Names.AddMany(null, analyzedArguments.Arguments.Count);
+            }
+            else
+            {
+                analyzedArguments.Names.Add(null);
+            }
+            if (analyzedArguments.RefKinds.Count > 0)
+            {
+                analyzedArguments.RefKinds.Add(RefKind.None);
+            }
+
+            // PROTOTYPE: Remove this call.
+            //var collectionCreation = BindMethodGroupInvocation(
+            //    syntax,
+            //    expression: syntax,
+            //    methodName: candidateMethodGroup.Name,
+            //    candidateMethodGroup,
+            //    analyzedArguments,
+            //    diagnostics,
+            //    queryClause: null,
+            //    ignoreNormalFormIfHasValidParamsParameter: false,
+            //    out _).MakeCompilerGenerated();
+
+            var methodGroup = MethodGroup.GetInstance();
+            methodGroup.PopulateWithNonExtensionMethods(receiverOpt: null, candidateMethodGroup.Methods, candidateMethodGroup.TypeArgumentsOpt);
+            var result = OverloadResolutionResult<MethodSymbol>.GetInstance();
+            var useSiteInfo = GetNewCompoundUseSiteInfo(diagnostics);
+            OverloadResolution.CollectionBuilderMethodOverloadResolution(
+                methodGroup.Methods,
+                methodGroup.TypeArguments,
+                analyzedArguments,
+                result,
+                ref useSiteInfo);
+            diagnostics.Add(syntax, useSiteInfo);
+            var methodResolution = new MethodGroupResolution(methodGroup, otherSymbol: null, result, analyzedArguments, LookupResultKind.Viable, diagnostics.ToReadOnly());
+            var collectionCreation = BindMethodGroupInvocationContinued(
                 syntax,
                 expression: syntax,
                 methodName: candidateMethodGroup.Name,
@@ -1322,9 +1359,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 analyzedArguments,
                 diagnostics,
                 queryClause: null,
-                ignoreNormalFormIfHasValidParamsParameter: false,
-                out _).MakeCompilerGenerated();
-            analyzedArguments.Free();
+                methodResolution).MakeCompilerGenerated();
+
             return collectionCreation;
         }
 
@@ -2363,7 +2399,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     continue;
                 }
 
-                if (method.Parameters is not [{ RefKind: RefKind.None, Type: var parameterType }, ..]
+                if (method.Parameters is not [.., { RefKind: RefKind.None, Type: var parameterType }]
                     || !readOnlySpanType.Equals(parameterType.OriginalDefinition, TypeCompareKind.AllIgnoreOptions))
                 {
                     continue;
@@ -2373,7 +2409,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     method :
                     method.Construct(allTypeParameters);
 
-                var spanTypeArg = ((NamedTypeSymbol)methodWithTargetTypeParameters.Parameters[0].Type).TypeArgumentsWithAnnotationsNoUseSiteDiagnostics[0].Type;
+                var spanTypeArg = ((NamedTypeSymbol)methodWithTargetTypeParameters.Parameters[^1].Type).TypeArgumentsWithAnnotationsNoUseSiteDiagnostics[0].Type;
                 var conversion = Conversions.ClassifyImplicitConversionFromType(elementType, spanTypeArg, ref candidateUseSiteInfo);
                 if (!conversion.IsIdentity)
                 {
